@@ -9,7 +9,7 @@ Exclude development dependencies from Time Machine backups. Automatically.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
 [![Shell: Bash](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnubash&logoColor=white)](asimov)
 
-Asimov scans your home directory for known dependency directories (`node_modules/`, `vendor/`, `.venv/`, etc.), verifies the corresponding config file exists, and tells Time Machine to skip them. No more wasting backup space on files you can restore with a single command.
+Asimov scans your home directory for known dependency directories (`node_modules/`, `vendor/`, `.venv/`, etc.), verifies the corresponding config file exists, and **tells Time Machine to skip them**. No more wasting backup space on files you can restore with a single command.
 
 ## Install
 
