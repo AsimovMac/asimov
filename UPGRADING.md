@@ -1,3 +1,29 @@
+# Upgrading Asimov
+
+## To v0.9.0 (from the `django23/asimov` fork)
+
+`0.9.0` folds the fork's work (v0.4.0–v0.8.0) back into the original project, now
+homed at [`AsimovMac/asimov`](https://github.com/AsimovMac/asimov) (transferred from
+`stevegrunwell/asimov`, which now redirects there). It also **reverts the LaunchAgent
+label** from `com.django23.asimov` back to the original `com.stevegrunwell.asimov`.
+
+The installers remove the old `com.django23.asimov` agent for you. If you want to
+migrate by hand, unload the fork's agent first so you don't end up with two daily jobs:
+
+```sh
+launchctl bootout gui/$(id -u)/com.django23.asimov 2>/dev/null
+rm ~/Library/LaunchAgents/com.django23.asimov.plist 2>/dev/null
+```
+
+Then install the beta:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
+  | ASIMOV_REF=v0.9.0-beta.1 bash
+```
+
+Your `~/.config/asimov/config` and `~/.cache/asimov/` are unaffected.
+
 # Upgrading to Asimov v0.5.0
 
 ## From v0.4.x (this fork)
@@ -49,9 +75,8 @@ rm /usr/local/bin/asimov
 ### Step 2: Install this fork
 
 ```sh
-brew install django23/tap/asimov
-# or
-curl -fsSL https://raw.githubusercontent.com/django23/asimov/main/scripts/install-remote.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
+  | ASIMOV_REF=v0.9.0-beta.1 bash
 ```
 
 ### Step 3: (Optional) Enable global cache exclusions

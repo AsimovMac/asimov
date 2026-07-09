@@ -7,7 +7,7 @@ Thanks for your interest in contributing! Asimov is a small, focused project and
 **Prerequisites:** macOS with [Homebrew](https://brew.sh) installed.
 
 ```sh
-git clone https://github.com/django23/asimov.git
+git clone https://github.com/AsimovMac/asimov.git
 cd asimov
 brew install bats-core shellcheck
 ```
@@ -131,7 +131,7 @@ make verify-release                          # brew upgrade + asimov --version
 If `gh pr create` fails with `Head sha can't be blank` (GraphQL indexing lag), retry once or fall back to the REST API:
 
 ```sh
-gh api repos/django23/asimov/pulls -X POST \
+gh api repos/AsimovMac/asimov/pulls -X POST \
   -f title="docs: release X.Y.Z" \
   -f head="release/X.Y.Z" -f base="main" \
   -f body="See CHANGELOG.md"
@@ -180,4 +180,4 @@ git config gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
 
 ## Questions?
 
-Open an [issue](https://github.com/django23/asimov/issues) — happy to help.
+Open an [issue](https://github.com/AsimovMac/asimov/issues) — happy to help.

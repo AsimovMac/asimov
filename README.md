@@ -2,9 +2,9 @@
 
 **Stop backing up files you'll never restore.**
 
-[![Tests](https://github.com/django23/asimov/actions/workflows/tests.yml/badge.svg)](https://github.com/django23/asimov/actions/workflows/tests.yml)
-[![Latest release](https://img.shields.io/github/v/release/django23/asimov?sort=semver&color=blue)](https://github.com/django23/asimov/releases)
-[![Stars](https://img.shields.io/github/stars/django23/asimov?style=flat)](https://github.com/django23/asimov/stargazers)
+[![Tests](https://github.com/AsimovMac/asimov/actions/workflows/tests.yml/badge.svg)](https://github.com/AsimovMac/asimov/actions/workflows/tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/AsimovMac/asimov?include_prereleases&sort=semver&color=blue)](https://github.com/AsimovMac/asimov/releases)
+[![Stars](https://img.shields.io/github/stars/AsimovMac/asimov?style=flat)](https://github.com/AsimovMac/asimov/stargazers)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue?logo=apple&logoColor=white)](https://support.apple.com/en-us/HT201250)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
 [![Shell: Bash](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnubash&logoColor=white)](asimov)
@@ -15,12 +15,14 @@ Asimov scans your home directory, finds dependency folders next to their config 
 
 ## Install
 
+> **Beta:** `v0.9.0` is in pre-release testing. Install it with the curl command below.
+
 ```sh
-brew install django23/tap/asimov
-brew services start django23/tap/asimov
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
+  | ASIMOV_REF=v0.9.0-beta.1 bash
 ```
 
-That's it — Asimov runs at midday, every day. Prefer no Homebrew? See [other install methods](#other-install-methods).
+That's it — Asimov installs to `~/.local/bin` and runs at midday, every day. See [other install methods](#other-install-methods) for Homebrew and source installs.
 
 ## What you'll see
 
@@ -107,14 +109,12 @@ Asimov keeps a cache under `~/.cache/asimov/` so repeat runs are near-instant. T
 
 ## Schedule
 
-If you installed via Homebrew, `brew services start django23/tap/asimov` already set up a daily run. To trigger one immediately or stop the schedule:
+The curl and source installers set up a daily launchd job automatically. To trigger one immediately or stop the schedule:
 
 ```sh
-launchctl kickstart gui/$(id -u)/com.django23.asimov   # run now
-launchctl bootout   gui/$(id -u)/com.django23.asimov   # stop schedule
+launchctl kickstart gui/$(id -u)/com.stevegrunwell.asimov   # run now
+launchctl bootout   gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
 ```
-
-Manual and curl installers set up the same launchd job automatically.
 
 ## Configuration
 
@@ -150,35 +150,36 @@ extra   = ~/my-build-cache       # plus any paths you name (always excluded when
 
 ## Other install methods
 
-**curl (no Homebrew):**
+**Homebrew** — the tap currently tracks the last stable (`0.8.0`), not the `0.9.0` beta:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/django23/asimov/main/scripts/install-remote.sh | bash
+brew install django23/tap/asimov
+brew services start django23/tap/asimov
 ```
 
 **From source:**
 
 ```sh
-git clone https://github.com/django23/asimov.git --depth 1
+git clone https://github.com/AsimovMac/asimov.git --depth 1
 cd asimov && make install
 ```
 
 ## Uninstall
 
 ```sh
-brew uninstall asimov                                # Homebrew
-rm ~/.local/bin/asimov                               # curl install
-launchctl bootout gui/$(id -u)/com.django23.asimov   # stop schedule
-make uninstall                                       # source install
+rm ~/.local/bin/asimov                                    # curl install
+brew uninstall asimov                                     # Homebrew
+launchctl bootout gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
+make uninstall                                            # source install
 ```
 
 ## Upgrading
 
-See [UPGRADING.md](UPGRADING.md) for migrating from v0.4.x or the [original asimov](https://github.com/stevegrunwell/asimov).
+See [UPGRADING.md](UPGRADING.md) for migrating from v0.4.x or the original `stevegrunwell/asimov`.
 
 ## Credits
 
-Asimov was originally created by [Steve Grunwell](https://github.com/stevegrunwell/asimov). This fork is actively maintained at [django23/asimov](https://github.com/django23/asimov) with performance improvements, config file support, and expanded ecosystem coverage.
+Asimov was created by [Steve Grunwell](https://github.com/stevegrunwell) and maintained at [`stevegrunwell/asimov`](https://github.com/stevegrunwell/asimov) through v0.3.0. Versions since `0.4.0` add performance improvements, config-file support, and expanded ecosystem coverage.
 
 ## Contributing
 

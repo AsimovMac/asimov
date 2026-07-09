@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 #
-# Tests for the com.django23.asimov.plist LaunchAgent definition.
+# Tests for the com.stevegrunwell.asimov.plist LaunchAgent definition.
 # Validates that the plist is well-formed and contains the correct values
 # required for `brew services start asimov` to schedule correctly.
 
-PLIST_FILE="${BATS_TEST_DIRNAME}/../com.django23.asimov.plist"
+PLIST_FILE="${BATS_TEST_DIRNAME}/../com.stevegrunwell.asimov.plist"
 
 # =============================================================================
 # File existence and validity
@@ -22,10 +22,10 @@ PLIST_FILE="${BATS_TEST_DIRNAME}/../com.django23.asimov.plist"
 # Label
 # =============================================================================
 
-@test "plist Label is com.django23.asimov" {
+@test "plist Label is com.stevegrunwell.asimov" {
   local label
   label="$(plutil -extract Label raw "$PLIST_FILE")"
-  [[ "$label" == "com.django23.asimov" ]]
+  [[ "$label" == "com.stevegrunwell.asimov" ]]
 }
 
 @test "plist Label matches the filename (without .plist extension)" {

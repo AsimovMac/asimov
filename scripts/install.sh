@@ -20,8 +20,14 @@ if [[ "${NAME}" != "asimov" ]]; then
   exit 0
 fi
 
-# Ensure daemon is not already loaded.
+# Migrate: remove the legacy fork agent (label renamed django23 -> stevegrunwell in v0.9.0).
 if launchctl list | grep -q com.django23.asimov; then
+  printf '\n\033[0;36mRemoving legacy com.django23.asimov agent\033[0m\n'
+  launchctl remove com.django23.asimov 2>/dev/null || true
+fi
+
+# Ensure daemon is not already loaded.
+if launchctl list | grep -q "${PLIST%.plist}"; then
   printf '\n\033[0;36mUnloading current instance of %s\033[0m\n' "${PLIST}"
   launchctl unload "${DIR}/${PLIST}"
 fi

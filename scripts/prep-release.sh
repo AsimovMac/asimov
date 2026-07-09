@@ -68,8 +68,8 @@ awk -v ver="$VERSION" -v prev="$PREV" -v date="$DATE" '
     next
 }
 /^\[Unreleased\]: / && !link_updated {
-    print "[Unreleased]: https://github.com/django23/asimov/compare/v" ver "...main"
-    print "[" ver "]: https://github.com/django23/asimov/compare/v" prev "...v" ver
+    print "[Unreleased]: https://github.com/AsimovMac/asimov/compare/v" ver "...main"
+    print "[" ver "]: https://github.com/AsimovMac/asimov/compare/v" prev "...v" ver
     link_updated = 1
     next
 }

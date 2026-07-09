@@ -3,10 +3,15 @@
 
 TAP_DIR ?= ../homebrew-tap
 
-# Pin gh to this repo so a configured `upstream` remote (e.g. stevegrunwell/asimov)
-# never wins remote-detection — bit us in 0.6.4 when ship-formula hit the upstream
-# release.yml and 404'd. Override with `GH_REPO=other/repo make ...` if needed.
-export GH_REPO ?= django23/asimov
+# Which GitHub repo + git remote releases target. Defaults to the project's home
+# (AsimovMac/asimov); override for the interim django23 tap flow, e.g.:
+#   make release-beta REPO=django23/asimov RELEASE_REMOTE=origin
+# Pinning GH_REPO to $(REPO) stops another configured remote from winning gh's
+# remote-detection — bit us in 0.6.4 when ship-formula hit an upstream release.yml
+# and 404'd.
+REPO ?= AsimovMac/asimov
+RELEASE_REMOTE ?= origin
+export GH_REPO ?= $(REPO)
 
 ## —————————— 🎵 Asimov 🎵 ————————————————————————————————————
 
@@ -80,7 +85,7 @@ release: check ## Tag and push a stable release — GitHub Actions will create t
 	if git rev-parse "$$TAG" >/dev/null 2>&1; then echo "error: $$TAG already exists"; exit 1; fi; \
 	echo "Tagging $$TAG (signed)..."; \
 	git tag -s "$$TAG" -m "Release $$TAG"; \
-	git push origin "$$TAG"; \
+	git push $(RELEASE_REMOTE) "$$TAG"; \
 	echo "Tag $$TAG pushed — GitHub Actions will create the release."; \
 	echo "Next: run 'make ship-formula' to wait for release.yml, bump the tap formula, and push."
 
@@ -95,7 +100,7 @@ release-beta: check ## Tag and push a beta pre-release — GitHub Actions will c
 	TAG="v$$VERSION-beta.$$BETA_NUM"; \
 	echo "Tagging $$TAG (signed)..."; \
 	git tag -s "$$TAG" -m "Pre-release $$TAG"; \
-	git push origin "$$TAG"; \
+	git push $(RELEASE_REMOTE) "$$TAG"; \
 	echo "Tag $$TAG pushed — GitHub Actions will create the pre-release."
 
 bump-formula: ## Update the Homebrew tap formula to match the current asimov version (TAP_DIR=../homebrew-tap)
@@ -103,7 +108,7 @@ bump-formula: ## Update the Homebrew tap formula to match the current asimov ver
 	if [ ! -d "$(TAP_DIR)/Formula" ]; then echo "error: $(TAP_DIR)/Formula not found — clone django23/homebrew-tap to $(TAP_DIR)"; exit 1; fi; \
 	VERSION=$$(./asimov --version); \
 	TAG="v$$VERSION"; \
-	URL="https://github.com/django23/asimov/archive/refs/tags/$$TAG.tar.gz"; \
+	URL="https://github.com/$(REPO)/archive/refs/tags/$$TAG.tar.gz"; \
 	echo "Fetching $$URL ..."; \
 	TARBALL=$$(mktemp); \
 	trap 'rm -f "$$TARBALL"' EXIT; \

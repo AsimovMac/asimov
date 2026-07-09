@@ -1,4 +1,4 @@
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 NAME="${NAME:-asimov}"
 BIN="/usr/local/bin/${NAME}"
-PLIST="com.django23.asimov.plist"
+PLIST="com.stevegrunwell.asimov.plist"
