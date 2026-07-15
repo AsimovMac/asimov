@@ -15,22 +15,24 @@ Asimov scans your home directory, finds dependency folders next to their config 
 
 ## Install
 
-### Stable — v0.8.0
+### Stable — v0.3.0
+
+The last release from Asimov's original maintainer, available in homebrew-core:
 
 ```sh
-brew install django23/tap/asimov
-brew services start django23/tap/asimov
+brew install asimov
+brew services start asimov
 ```
 
-> `brew install asimov` from homebrew-core is still **v0.3.0** and unmaintained. Use the tap above.
+It's from 2020 and predates everything below — no config file, far fewer ecosystems, and a full scan on every run. A new stable lands once the beta settles.
 
-### Beta — v0.9.0-beta.1
+### Beta — v0.9.0-beta.2 *(recommended)*
 
-Currently in testing, and where the newest ecosystems and the ~1–2s cached runs live:
+Where active development lives: 30+ more ecosystems, a config file, `--dry-run`, and caching that takes typical runs from ~75s to ~1–2s.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
-  | ASIMOV_REF=v0.9.0-beta.1 bash
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.2/scripts/install-remote.sh \
+  | ASIMOV_REF=v0.9.0-beta.2 bash
 ```
 
 Installs to `~/.local/bin`. Feedback and bug reports very welcome — [open an issue](https://github.com/AsimovMac/asimov/issues).
