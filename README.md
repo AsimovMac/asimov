@@ -15,14 +15,36 @@ Asimov scans your home directory, finds dependency folders next to their config 
 
 ## Install
 
-> **Beta:** `v0.9.0` is in pre-release testing. Install it with the curl command below.
+### Stable — v0.8.0
+
+```sh
+brew install django23/tap/asimov
+brew services start django23/tap/asimov
+```
+
+> `brew install asimov` from homebrew-core is still **v0.3.0** and unmaintained. Use the tap above.
+
+### Beta — v0.9.0-beta.1
+
+Currently in testing, and where the newest ecosystems and the ~1–2s cached runs live:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
   | ASIMOV_REF=v0.9.0-beta.1 bash
 ```
 
-That's it — Asimov installs to `~/.local/bin` and runs at midday, every day. See [other install methods](#other-install-methods) for Homebrew and source installs.
+Installs to `~/.local/bin`. Feedback and bug reports very welcome — [open an issue](https://github.com/AsimovMac/asimov/issues).
+
+### Quick start
+
+```sh
+asimov --dry-run    # preview what would be excluded — changes nothing
+asimov              # apply
+```
+
+That's it. Asimov then runs itself once a day, every day. Add `--stats` to either command to see sizes and how much space you're saving.
+
+See [other install methods](#other-install-methods) to build from source.
 
 ## What you'll see
 
@@ -79,7 +101,7 @@ This means Asimov never touches a folder that just happens to share a common nam
 | **R**                       | `renv`                                                                                                                           |
 | **DevOps / IaC**            | `.terraform`, `.terragrunt-cache`, `.vagrant`, `.direnv`, `cdk.out`                                                              |
 | **Game dev**                | `.godot`                                                                                                                         |
-| **Global caches** (opt-in)  | `~/.cache`, `~/.gradle/caches`, `~/.m2/repository`, `~/.npm/_cacache`, `~/.nuget/packages`, `~/.kube/cache`                      |
+| **Global caches** (opt-in)  | `~/.cache`, `~/.gradle/caches`, `~/.m2/repository`, `~/.npm/_cacache`, `~/.nuget/packages`, `~/.kube/cache`, `~/go/pkg/mod`         |
 
 **Don't see your tool?** You can teach Asimov your own directory + sentinel pairs in a couple of lines — no need to wait for a release. See [Add your own patterns](#add-your-own-patterns).
 
@@ -146,16 +168,10 @@ Global tool caches in your home directory (`~/.cache`, `~/.gradle/caches`, …) 
 [fixed_dirs]
 enabled = true                   # exclude the built-in global caches
 extra   = ~/my-build-cache       # plus any paths you name (always excluded when they exist)
+extra   = ~/golang/pkg/mod       # e.g. a Go module cache under a custom GOPATH
 ```
 
 ## Other install methods
-
-**Homebrew** — the tap currently tracks the last stable (`0.8.0`), not the `0.9.0` beta:
-
-```sh
-brew install django23/tap/asimov
-brew services start django23/tap/asimov
-```
 
 **From source:**
 
@@ -179,7 +195,11 @@ See [UPGRADING.md](UPGRADING.md) for migrating from v0.4.x or the original `stev
 
 ## Credits
 
-Asimov was created by [Steve Grunwell](https://github.com/stevegrunwell) and maintained at [`stevegrunwell/asimov`](https://github.com/stevegrunwell/asimov) through v0.3.0. Versions since `0.4.0` add performance improvements, config-file support, and expanded ecosystem coverage.
+Asimov was created by **[Steve Grunwell](https://github.com/stevegrunwell)**, who built and maintained it at `stevegrunwell/asimov` from 2018 through v0.3.0 — the version most people know it by. Thank you, Steve, for the years of work and for [handing it on](https://github.com/AsimovMac/asimov/issues/99) so carefully.
+
+The project now lives at [`AsimovMac/asimov`](https://github.com/AsimovMac/asimov) (the original repo, transferred — the old URL still redirects here), maintained by [@django23](https://github.com/django23). Releases from `v0.4.0` onward add expanded ecosystem coverage, a config file, and the caching that took typical runs from ~75s to ~1–2s.
+
+Built on the contributions of everyone who filed issues and PRs over the years. Asimov is, and stays, MIT-licensed and community-driven.
 
 ## Contributing
 

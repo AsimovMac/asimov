@@ -45,8 +45,12 @@ case "$subcommand" in
       # Simulate failure for paths listed in ASIMOV_TEST_TMUTIL_FAIL_PATHS
       if [[ -n "${ASIMOV_TEST_TMUTIL_FAIL_PATHS:-}" && -f "${ASIMOV_TEST_TMUTIL_FAIL_PATHS}" ]]; then
         if grep -Fxq "$path" "$ASIMOV_TEST_TMUTIL_FAIL_PATHS" 2>/dev/null; then
-          echo "Error (-50) while attempting to change exclusion setting." >&2
-          exit 1
+          # Mirror real tmutil: the POSIXError dump goes to STDOUT (not stderr),
+          # while the "Error (-NN)" line goes to stderr. Keeping both faithful is
+          # what lets tests catch the dump leaking into Asimov's output.
+          echo 'POSIXError(_nsError: Error Domain=NSPOSIXErrorDomain Code=22 "Invalid argument")'
+          echo "${path}: Error (-50) while attempting to change exclusion setting." >&2
+          exit 22
         fi
       fi
       # Idempotent: don't add if already present (matches real tmutil)

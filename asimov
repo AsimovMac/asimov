@@ -175,7 +175,7 @@ mdfind -onlyin "${ASIMOV_SCAN_DIR}" "com_apple_backup_excludeItem = 'com.apple.b
     | sort -u > "$ASIMOV_EXCLUDED_CACHE" || true
 spotlight_count="$(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ')"
 # Merge persistent excluded + failed state into the Spotlight cache.
-# Failed paths (e.g. Go modules with @ chars) are included so the bulk filter
+# Failed paths (e.g. read-only dirs inside Go's module cache) are included so the bulk filter
 # skips them instantly instead of wasting time retrying tmutil.
 # Skipped under --no-read-cache (--full-scan / --no-cache): every path is then
 # re-verified against the tmutil isexcluded ground truth instead.
@@ -620,6 +620,7 @@ readonly ASIMOV_FIXED_DIRS=(
     "${ASIMOV_ROOT}/.nuget/packages"                  # NuGet global packages
     "${ASIMOV_ROOT}/.kube/cache"                      # Kubernetes API cache
     "${ASIMOV_ROOT}/.kube/http-cache"                 # Kubernetes HTTP cache
+    "${ASIMOV_ROOT}/go/pkg/mod"                       # Go module cache (0555 inside; exclude as a whole)
 )
 
 # Record an excluded path: log for counting, compute size only with --stats.
@@ -648,8 +649,8 @@ record_excluded_path() {
 # Performance notes (learned the hard way):
 # - tmutil addexclusion takes ~11s per call (IPC with TM daemon). This dominates runtime.
 # - Batching (tmutil addexclusion path1 path2 ...) provides NO speed benefit — tmutil
-#   processes paths sequentially at ~11s each. Worse: one bad path (e.g. Go modules with
-#   @ characters) fails the entire batch, wasting all accumulated time before fallback.
+#   processes paths sequentially at ~11s each. Worse: one bad path (e.g. a read-only
+#   dir in Go's module cache) fails the entire batch, wasting all accumulated time.
 # - Spotlight (mdfind) can be stale: recently excluded paths may not appear in the index.
 #   Without a guard, this causes re-excluding already-done paths (~11s each, wasted).
 # - Three-layer defense against wasted tmutil calls:
@@ -748,10 +749,20 @@ exclude_paths_from_stdin() {
             continue
         fi
         local path_start=$SECONDS
-        if ! tmutil addexclusion "${path}" 2>/dev/null; then
+        # Time Machine stores an exclusion as an xattr on the item itself, so a
+        # read-only directory can never be excluded — tmutil fails with
+        # "Error (-20)" / EINVAL. The common case is Go's module cache, which is
+        # deliberately 0555. Check first: addexclusion costs ~11s even when it fails.
+        if [[ ! -w "$path" ]]; then
+            echo "! ${path}: read-only, cannot be excluded — skipping." >&2
+            [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
+            continue
+        fi
+        # tmutil prints its POSIXError dump to stdout, not stderr — silence both.
+        if ! tmutil addexclusion "${path}" >/dev/null 2>&1; then
             echo "! ${path}: failed to exclude (tmutil error), skipping." >&2
             # Persist failure so we skip this path on subsequent runs.
-            # Common cause: Go module paths with @ characters. Use --no-read-cache to retry.
+            # Use --no-read-cache to retry.
             [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
             continue
         fi

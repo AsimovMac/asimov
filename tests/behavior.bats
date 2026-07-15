@@ -233,6 +233,28 @@ enabled = true"
   [[ "$(count_exclusions)" -eq 3 ]]
 }
 
+@test "excludes the Go module cache when fixed dirs are enabled" {
+  mkdir -p "${HOME}/go/pkg/mod"
+  write_config "[fixed_dirs]
+enabled = true"
+  run_asimov
+  assert_excluded "${HOME}/go/pkg/mod"
+}
+
+@test "excludes the Go module cache as a whole, not each vendor dir inside it" {
+  # Real-world shape: the module cache holds many read-only vendor/ dirs behind
+  # @-versioned paths. Excluding the cache root covers all of them in one call;
+  # excluding each individually would be ~11s apiece and fail on the 0555 perms.
+  create_project "go/pkg/mod/github.com/foo/bar@v1.2.3" "go.mod" "vendor"
+  write_config "[fixed_dirs]
+enabled = true"
+
+  run_asimov
+
+  assert_excluded "${HOME}/go/pkg/mod"
+  refute_excluded "${HOME}/go/pkg/mod/github.com/foo/bar@v1.2.3/vendor"
+}
+
 @test "does not re-exclude already excluded fixed directory" {
   mkdir -p "${HOME}/.cache"
   write_config "[fixed_dirs]
@@ -405,6 +427,62 @@ extra = .custom-deps *.x'; touch ${pwned}; '"
   # Output should contain the warning
   [[ "$output" == *"failed to exclude"* ]]
   [[ "$(count_exclusions)" -eq 0 ]]
+}
+
+@test "does not leak tmutil's POSIXError dump into output" {
+  create_project "Code/Bad-Project" "package.json" "node_modules"
+
+  ASIMOV_TEST_TMUTIL_FAIL_PATHS="${TEST_TEMP_DIR}/.tmutil_fail_paths"
+  export ASIMOV_TEST_TMUTIL_FAIL_PATHS
+  echo "${HOME}/Code/Bad-Project/node_modules" > "$ASIMOV_TEST_TMUTIL_FAIL_PATHS"
+
+  run_asimov
+
+  [[ "$status" -eq 0 ]]
+  # tmutil dumps POSIXError(...) to stdout — not stderr — so a bare 2>/dev/null
+  # lets it leak. Asimov must swallow it and print its own warning instead.
+  [[ "$output" != *"POSIXError"* ]]
+  [[ "$output" == *"failed to exclude"* ]]
+}
+
+# =============================================================================
+# Read-only directories (e.g. Go's module cache, which is 0555)
+# =============================================================================
+
+@test "skips read-only directory without attempting tmutil" {
+  create_project "Code/Go-Project" "go.mod" "vendor"
+  chmod 555 "${HOME}/Code/Go-Project/vendor"
+
+  run_asimov
+  local status_copy="$status" output_copy="$output"
+  chmod 755 "${HOME}/Code/Go-Project/vendor"
+
+  [[ "$status_copy" -eq 0 ]]
+  refute_excluded "${HOME}/Code/Go-Project/vendor"
+  # The read-only pre-check should fire — NOT the tmutil-failure path. A Time
+  # Machine exclusion is an xattr on the item, so a 0555 dir can never take one.
+  [[ "$output_copy" == *"read-only"* ]]
+  [[ "$output_copy" != *"tmutil error"* ]]
+}
+
+@test "read-only directory is recorded in failed state" {
+  create_project "Code/Go-Project" "go.mod" "vendor"
+  chmod 555 "${HOME}/Code/Go-Project/vendor"
+
+  run_asimov
+  chmod 755 "${HOME}/Code/Go-Project/vendor"
+
+  assert_failed "${HOME}/Code/Go-Project/vendor"
+}
+
+@test "writable directory containing @ is excluded (@ is not the blocker)" {
+  # Regression guard: the failure on Go module paths was long attributed to the
+  # '@' in the version syntax. It is not — read-only permissions are the cause.
+  create_project "Code/cheat@v0.0.0-20211009161301" "go.mod" "vendor"
+
+  run_asimov
+
+  assert_excluded "${HOME}/Code/cheat@v0.0.0-20211009161301/vendor"
 }
 
 # =============================================================================
