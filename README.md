@@ -173,6 +173,20 @@ extra   = ~/my-build-cache       # plus any paths you name (always excluded when
 extra   = ~/golang/pkg/mod       # e.g. a Go module cache under a custom GOPATH
 ```
 
+### Exclude paths from search
+Sometimes you may want to exclude directories from the search. By default, Asimov excludes `~/.Trash`
+and `~/Library` to avoid modifying Time Machine exclusions for these paths. You can add additional paths to the search exclusion list:
+
+```ini
+[skip_paths]
+extra = ~/Music
+extra = ~/Pictures
+```
+
+`skip_paths` does not exclude global caches defined in `fixed_dirs`.
+
+If your code is contained to a single subfolder, you may want to only search that subfolder instead by specifying the directory argument in the CLI ([see usage](#usage)).
+
 ## Other install methods
 
 **From source:**
