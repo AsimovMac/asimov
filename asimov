@@ -195,6 +195,7 @@ load_config() {
     local config_file="${ASIMOV_ROOT}/.config/asimov/config"
 
     ASIMOV_CONFIG_FIXED_DIRS_ENABLED=false
+    ASIMOV_CONFIG_EXTRA_SKIP_PATHS=()
     ASIMOV_CONFIG_EXTRA_FIXED_DIRS=()
     ASIMOV_CONFIG_EXTRA_SENTINELS=()
     ASIMOV_CONFIG_DISABLED_SENTINELS=()
@@ -231,6 +232,10 @@ load_config() {
                     ;;
                 sentinels:disabled)
                     ASIMOV_CONFIG_DISABLED_SENTINELS+=("$value")
+                    ;;
+                skip_paths:extra)
+                    value="${value/#\~/$HOME}"
+                    ASIMOV_CONFIG_EXTRA_SKIP_PATHS+=("$value")
                     ;;
             esac
         fi
@@ -475,7 +480,11 @@ discover_new_paths_via_mdfind() {
         # Skip paths under ASIMOV_SKIP_PATHS
         local skip=false
         local skip_dir
-        for skip_dir in "${ASIMOV_SKIP_PATHS[@]}"; do
+        local all_skip_paths=("${ASIMOV_SKIP_PATHS[@]}")
+        if [[ ${#ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]} -gt 0 ]]; then
+            all_skip_paths+=("${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}")
+        fi
+        for skip_dir in "${all_skip_paths[@]}"; do
             if [[ "$candidate" == "${skip_dir}"/* || "$candidate" == "${skip_dir}" ]]; then
                 skip=true
                 break
@@ -783,7 +792,11 @@ exclude_paths_from_stdin() {
 build_find_skip_params() {
     find_parameters_skip=()
     local skip_dir
-    for skip_dir in "${ASIMOV_SKIP_PATHS[@]}"; do
+    local all_skip_paths=("${ASIMOV_SKIP_PATHS[@]}")
+    if [[ ${#ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]} -gt 0 ]]; then
+        all_skip_paths+=("${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}")
+    fi
+    for skip_dir in "${all_skip_paths[@]}"; do
         find_parameters_skip+=( -not \( -path "${skip_dir}" -prune \) )
     done
 }
