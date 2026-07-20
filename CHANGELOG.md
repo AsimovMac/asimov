@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `[skip_paths]` configuration option to skip sub directories in search.
 
 ### Changed
 
