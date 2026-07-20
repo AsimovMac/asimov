@@ -120,6 +120,16 @@ load test_helper
   [[ "$(count_exclusions)" -eq 0 ]]
 }
 
+@test "skips directories given in [skip_paths] config" {
+  mkdir -p "${HOME}/.skipme"
+  write_config "[skip_paths]
+extra = ~/.skipme"
+  create_project ""${HOME}/.skipme"/Code/First-Project" "composer.json" "vendor"
+  run_asimov
+  [[ "$(count_exclusions)" -eq 0 ]]
+  refute_excluded "${HOME}/.skipme/Code/First-Project/vendor"
+}
+
 # =============================================================================
 # Nested project handling
 # =============================================================================
