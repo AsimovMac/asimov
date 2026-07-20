@@ -111,7 +111,7 @@ This means Asimov never touches a folder that just happens to share a common nam
 ## Usage
 
 ```
-asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version]
+asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version] [directory]
 ```
 
 
