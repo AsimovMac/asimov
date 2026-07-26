@@ -103,6 +103,31 @@ This means Asimov never touches a folder that just happens to share a common nam
 **Don't see your tool?** You can teach Asimov your own directory + sentinel pairs in a couple of lines — no need to wait for a release. See [Add your own patterns](#add-your-own-patterns).
 
 
+## What Asimov doesn't do
+
+Asimov sets **Time Machine exclusions** — nothing else. Three things it's often expected to do, and doesn't:
+
+| | |
+| --- | --- |
+| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism. Excluding `node_modules` from Time Machine does not stop it appearing in Spotlight results. Tracked in [#70](https://github.com/AsimovMac/asimov/issues/70) |
+| **Shrink existing backups** | An exclusion stops a directory being backed up *from now on*. Copies already on the backup disk stay until you delete them or Time Machine ages them out |
+| **Delete anything** | Asimov never removes a file from your Mac. It only sets an attribute on the directory |
+
+Nothing is lost by excluding a dependency directory: it isn't backed up, and after a restore you run `npm install` (or your equivalent) to get it back.
+
+### Verifying it worked
+
+```sh
+asimov --dry-run                                                   # what Asimov would exclude
+sudo mdfind "com_apple_backup_excludeItem = 'com.apple.backupd'"   # what's actually excluded
+```
+
+If `mdfind` doesn't list your projects, the run isn't reaching them. The two usual causes:
+
+- **Projects live outside your home directory.** Add them with [`[scan] extra`](#scan-more-than-your-home-directory).
+- **The schedule isn't loaded.** Check with `launchctl print gui/$(id -u)/com.stevegrunwell.asimov`, and see [Schedule](#schedule).
+
+
 ## Usage
 
 ```
