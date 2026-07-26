@@ -527,6 +527,70 @@ extra = .custom-deps *.x'; touch ${pwned}; '"
 }
 
 # =============================================================================
+# [scan] extra — scan directories beyond home
+# =============================================================================
+
+@test "config [scan] extra scans an additional directory alongside home" {
+  local external
+  external="$(mktemp -d)"
+  mkdir -p "${external}/Site/node_modules"
+  echo "sentinel" > "${external}/Site/package.json"
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+extra = ${external}"
+
+  run_asimov
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+  assert_excluded "${external}/Site/node_modules"
+
+  rm -rf "$external"
+}
+
+@test "config [scan] extra with a missing directory warns and keeps scanning home" {
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+extra = /does/not/exist"
+
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" =~ "does not exist" ]]
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+}
+
+@test "directory argument overrides config [scan] extra" {
+  local external
+  external="$(mktemp -d)"
+  mkdir -p "${external}/Site/node_modules"
+  echo "sentinel" > "${external}/Site/package.json"
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+extra = ${external}"
+
+  # Explicit path scans only that path; the configured extra dir is ignored.
+  run_asimov "${HOME}/Code"
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+  refute_excluded "${external}/Site/node_modules"
+
+  rm -rf "$external"
+}
+
+@test "config [scan] extra nested under home is pruned, not scanned twice" {
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  # ~/Code is already covered by the home scan; listing it must not cause a
+  # duplicate exclusion of the same directory.
+  write_config "[scan]
+extra = ${HOME}/Code"
+
+  run_asimov
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+  [[ "$(count_exclusions)" -eq 1 ]]
+}
+
+# =============================================================================
 # --verbose
 # =============================================================================
 
