@@ -11,6 +11,17 @@ setup() {
   ASIMOV_TEST_EXCLUSIONS="${TEST_TEMP_DIR}/.exclusions"
   export ASIMOV_TEST_EXCLUSIONS
   touch "$ASIMOV_TEST_EXCLUSIONS"
+
+  # How to launch the script under test. asimov's shebang is #!/usr/bin/env bash,
+  # so in real use it runs under whichever bash comes first on PATH: 3.2 on a
+  # stock Mac, 5.x on most development machines. ASIMOV_TEST_BASH pins that
+  # interpreter so CI can run the whole suite under each, and Bats keeps running
+  # under its own bash either way.
+  if [[ -n "${ASIMOV_TEST_BASH:-}" ]]; then
+    ASIMOV_CMD=("$ASIMOV_TEST_BASH" "${BATS_TEST_DIRNAME}/../asimov")
+  else
+    ASIMOV_CMD=("${BATS_TEST_DIRNAME}/../asimov")
+  fi
 }
 
 # Clean up the temporary directory after each test.
@@ -34,7 +45,7 @@ create_project() {
 
 # Run the asimov script under test. Pass any arguments (e.g. --dry-run, --help).
 run_asimov() {
-  run "${BATS_TEST_DIRNAME}/../asimov" "$@"
+  run "${ASIMOV_CMD[@]}" "$@"
 }
 
 # Return the number of exclusions recorded by the mock tmutil.

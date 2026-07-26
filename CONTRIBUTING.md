@@ -24,12 +24,35 @@ make check
 |---|---|
 | `make help` | List available make targets with descriptions |
 | `make test` | Run the [Bats](https://github.com/bats-core/bats-core) test suite |
+| `make test-system-bash` | Run the suite under the macOS system bash (3.2) |
 | `make lint` | Run [ShellCheck](https://www.shellcheck.net/) on all shell scripts |
 | `make check` | Run both tests and linting |
 | `make version` | Print asimov version |
 | `make exclusions` | List all paths excluded from Time Machine (requires sudo) |
 
 To run a single test by name: `bats tests/behavior.bats --filter "substring of test name"` or `bats tests/sentinels.bats --filter "npm"`.
+
+### Which bash your tests run under
+
+`asimov` starts with `#!/usr/bin/env bash`, so it runs under whichever `bash` comes first on `PATH`. On macOS that is one of two very different things:
+
+- `/bin/bash`, the system bash, still **3.2** because Apple froze it at the last GPLv2 release. This is what most users get.
+- A **5.x** build from Homebrew, which is probably what *you* get.
+
+They disagree on array and IFS semantics, so a change can pass locally and fail for users. Before opening a PR touching shell logic, run:
+
+```sh
+make test-system-bash        # or: make test BASH_BIN=/bin/bash
+```
+
+CI runs the full matrix (both macOS versions × both bash versions) on every PR, so it will catch this either way, but the local target is faster than a round trip.
+
+Tests can also run concurrently, which needs GNU parallel:
+
+```sh
+brew install parallel
+make test BATS_JOBS=4
+```
 
 The main script supports `--help`, `--version`, `--dry-run`, `--verbose`, and `--quiet`; unknown options exit with an error.
 
