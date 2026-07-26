@@ -185,3 +185,19 @@ refute_failed() {
 load_format_size_kb() {
     eval "$(awk '/^readonly ASIMOV_KB_PER/; /^format_size_kb\(\)/,/^}/' "${BATS_TEST_DIRNAME}/../asimov")"
 }
+
+# Write a Time Machine preferences fixture holding a sticky exclusion list
+# (the SkipPaths array written by `tmutil addexclusion -p`), and point the
+# script at it via ASIMOV_TM_PLIST.
+#
+# Usage: write_sticky_exclusions "/path/one" "/path/two"
+write_sticky_exclusions() {
+    local plist="${TEST_TEMP_DIR}/com.apple.TimeMachine.plist"
+    local path
+    /usr/libexec/PlistBuddy -c "Add :SkipPaths array" "$plist" >/dev/null 2>&1 \
+        || /usr/libexec/PlistBuddy -c "Delete :SkipPaths" -c "Add :SkipPaths array" "$plist" >/dev/null 2>&1
+    for path in "$@"; do
+        /usr/libexec/PlistBuddy -c "Add :SkipPaths: string ${path}" "$plist" >/dev/null
+    done
+    export ASIMOV_TM_PLIST="$plist"
+}
