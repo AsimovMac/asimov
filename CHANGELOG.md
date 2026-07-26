@@ -8,7 +8,17 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `make test-system-bash` runs the suite under the macOS system bash (3.2), which is what
+  most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
+  usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
+  `make test BATS_JOBS=N` runs tests concurrently (needs GNU parallel).
+
 ### Changed
+
+- CI now runs a matrix of both macOS versions × both bash versions (system 3.2 and Homebrew
+  5.x), with ShellCheck split into its own job so it runs once instead of once per cell.
+  All jobs run in parallel, `fail-fast` is off so one failing combination cannot hide the
+  others, and a newer push cancels an in-flight run for the same ref.
 
 ### Fixed
 
