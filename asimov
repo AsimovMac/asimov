@@ -48,11 +48,13 @@ if [[ -t 2 ]]; then
     readonly ASIMOV_ERR_ERROR=$'\033[0;31m'
     readonly ASIMOV_ERR_WARN=$'\033[0;33m'
     readonly ASIMOV_ERR_DIM=$'\033[0;90m'
+    readonly ASIMOV_ERR_BOLD=$'\033[1m'
     readonly ASIMOV_ERR_RESET=$'\033[0m'
 else
     readonly ASIMOV_ERR_ERROR=''
     readonly ASIMOV_ERR_WARN=''
     readonly ASIMOV_ERR_DIM=''
+    readonly ASIMOV_ERR_BOLD=''
     readonly ASIMOV_ERR_RESET=''
 fi
 
@@ -64,6 +66,16 @@ msg_error() {
 # Yellow warning line on stderr. Shown even under --quiet: it is not routine output.
 msg_warn() {
     printf '%s⚠ asimov: %s%s\n' "$ASIMOV_ERR_WARN" "$*" "$ASIMOV_ERR_RESET" >&2
+}
+
+# Dim continuation line on stderr, indented to sit under a warning or error.
+# Called with no arguments (or an empty one) it prints a bare blank line.
+msg_hint() {
+    if [[ -z "$*" ]]; then
+        printf '\n' >&2
+        return
+    fi
+    printf '%s  %s%s\n' "$ASIMOV_ERR_DIM" "$*" "$ASIMOV_ERR_RESET" >&2
 }
 
 print_usage() {
@@ -141,6 +153,70 @@ fi
 # Named constants for size formatting.
 readonly ASIMOV_KB_PER_MB=1024
 readonly ASIMOV_KB_PER_GB=1048576
+
+# --- Root / sudo guard ---
+
+# Effective UID. ASIMOV_TEST_UID is a test seam so the suite can simulate a root run.
+asimov_uid() {
+    if [[ -n "${ASIMOV_TEST_UID:-}" ]]; then
+        printf '%s' "$ASIMOV_TEST_UID"
+    else
+        printf '%s' "${EUID:-$(id -u)}"
+    fi
+}
+
+# True when we can actually ask the user something. ASIMOV_TEST_INTERACTIVE is a
+# test seam (bats runs with pipes on both descriptors).
+asimov_is_interactive() {
+    [[ -n "${ASIMOV_TEST_INTERACTIVE:-}" ]] && return 0
+    [[ -t 0 && -t 2 ]]
+}
+
+# Warn (and, when interactive, ask for confirmation) before running as root.
+#
+# `sudo asimov` looks like the "thorough" way to run this, but it is worse in
+# every direction: tmutil writes the exclusion as an xattr on each directory, so
+# root buys nothing, while the cache and state files under ~/.cache/asimov come
+# out root-owned — and the next normal run can no longer write them.
+#
+# Set ASIMOV_ALLOW_ROOT=1 to skip this entirely (deliberate root automation).
+warn_if_running_as_root() {
+    [[ "$(asimov_uid)" -eq 0 ]] || return 0
+    [[ -n "${ASIMOV_ALLOW_ROOT:-}" ]] && return 0
+
+    msg_warn "you are running asimov as root (sudo). That is almost never what you want."
+    msg_hint ""
+    msg_hint "Time Machine stores each exclusion as an xattr on the directory itself, so"
+    msg_hint "root gains you nothing — but it does leave ~/.cache/asimov owned by root,"
+    msg_hint "which breaks your next normal run."
+    msg_hint ""
+    msg_hint "Do this instead:"
+    msg_hint "    asimov                                                    # run it as yourself"
+    msg_hint "    launchctl kickstart gui/\$(id -u)/com.stevegrunwell.asimov  # or let the agent do it"
+    msg_hint ""
+    msg_hint "Already ran it with sudo? Fix the ownership with:"
+    msg_hint "    sudo chown -R \"\$(whoami)\" ~/.cache/asimov"
+    msg_hint ""
+
+    if ! asimov_is_interactive; then
+        msg_hint "Non-interactive session — continuing anyway."
+        msg_hint "Set ASIMOV_ALLOW_ROOT=1 to silence this warning."
+        return 0
+    fi
+
+    local reply=''
+    printf '%s  Continue as root anyway? [y/N] %s' "$ASIMOV_ERR_BOLD" "$ASIMOV_ERR_RESET" >&2
+    read -r reply || true
+    case "$reply" in
+        [yY] | [yY][eE][sS]) msg_warn "continuing as root." ;;
+        *)
+            msg_error "aborted — nothing was changed."
+            exit 1
+            ;;
+    esac
+}
+
+warn_if_running_as_root
 
 # Print a dim timestamped debug line when --verbose is set.
 # Uses bash's built-in $SECONDS variable (auto-increments from 0 at script start).

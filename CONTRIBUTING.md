@@ -110,6 +110,7 @@ tests/
   sentinels.bats        # Tests for each dependency pattern
   behavior.bats         # Tests for edge cases and general behavior
   format.bats           # Unit tests for format_size_kb()
+  root_guard.bats       # Tests for the sudo/root guard and styled diagnostics
   plist.bats            # Tests for the LaunchAgent plist
   test_helper.bash      # Shared setup/teardown and assertions
   bin/tmutil            # Mock tmutil for testing

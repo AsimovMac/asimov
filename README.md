@@ -125,6 +125,17 @@ Asimov keeps a cache under `~/.cache/asimov/` so repeat runs are near-instant. T
 - `--no-write-cache` — *"don't touch state."* Uses the fast cache to read, but persists nothing. Handy with `--dry-run`.
 - Both together = a fully stateless run that reads and writes nothing. **`--no-cache` is an alias for this.**
 
+### Don't run it with `sudo`
+
+Time Machine stores each exclusion as an extended attribute on the directory itself, so root buys you nothing — but it does leave `~/.cache/asimov` owned by root, which breaks your next normal run. Asimov warns and asks for confirmation if it detects a root run; decline and nothing is changed.
+
+```sh
+asimov                                  # run it as yourself
+sudo chown -R "$(whoami)" ~/.cache/asimov   # already ran it with sudo? fix ownership
+```
+
+If you deliberately run Asimov as root from your own automation, set `ASIMOV_ALLOW_ROOT=1` to skip the check.
+
 
 ## Schedule
 

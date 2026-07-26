@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
   `make test BATS_JOBS=N` runs tests concurrently (needs GNU parallel).
+- Guard against running under `sudo`. A root run now prints a warning explaining why it is unnecessary (Time Machine stores exclusions as an xattr on each directory) and harmful (it leaves `~/.cache/asimov` root-owned), points to the better alternatives, and asks for confirmation before continuing. Declining exits without changing anything; non-interactive runs (launchd, CI) warn and continue. Set `ASIMOV_ALLOW_ROOT=1` to skip the check entirely
 
 ### Changed
 
