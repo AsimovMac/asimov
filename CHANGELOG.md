@@ -12,6 +12,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
   `make test BATS_JOBS=N` runs tests concurrently (needs GNU parallel).
+- README: a "What Asimov doesn't do" section, covering the three things Asimov is most
+  often expected to do and doesn't — hide directories from Spotlight (a separate mechanism
+  from Time Machine exclusions), shrink backups that already exist, and delete anything —
+  plus how to verify a run reached your projects
+  ([#90](https://github.com/AsimovMac/asimov/issues/90),
+  [#45](https://github.com/AsimovMac/asimov/issues/45)).
 
 ### Changed
 
