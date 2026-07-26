@@ -48,6 +48,12 @@ print_usage() {
     printf '\n'
     printf 'Arguments:\n'
     printf '  directory          Directory to scan (default: home directory)\n'
+    printf '\n'
+    printf 'To scan additional directories on every run, add them to the config file\n'
+    printf '(~/.config/asimov/config) under a [scan] section:\n'
+    printf '\n'
+    printf '  [scan]\n'
+    printf '  extra = /private/var/www\n'
 }
 
 # Parse options (before we need ASIMOV_ROOT).
@@ -146,49 +152,6 @@ readonly ASIMOV_EXCLUDED_STATE="${ASIMOV_ROOT}/.cache/asimov/excluded"
 readonly ASIMOV_FAILED_STATE="${ASIMOV_ROOT}/.cache/asimov/failed"
 readonly ASIMOV_MDFIND_SEEN="${ASIMOV_ROOT}/.cache/asimov/mdfind_seen"
 
-# Default scan dir to ASIMOV_ROOT; override if user supplied a directory.
-if [[ -n "$ASIMOV_SCAN_DIR" ]]; then
-    if [[ ! -d "$ASIMOV_SCAN_DIR" ]]; then
-        echo "asimov: not a directory: ${ASIMOV_SCAN_DIR}" >&2
-        exit 1
-    fi
-else
-    ASIMOV_SCAN_DIR="$ASIMOV_ROOT"
-fi
-readonly ASIMOV_SCAN_DIR
-
-# When ignoring cached reads but still writing (e.g. --full-scan / --no-read-cache),
-# clear the append-only state so the rebuilt cache reflects only this run's results.
-# When not writing (--no-cache / --no-write-cache), leave every cache file untouched.
-# (The paths cache is truncated separately by init_path_cache before the full scan.)
-if [[ -n "$ASIMOV_NO_READ_CACHE" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
-    rm -f "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" "$ASIMOV_MDFIND_SEEN"
-fi
-
-# Build a cache of paths already excluded from Time Machine.
-# Merges Spotlight index (what macOS reports) with our own persistent state
-# (written after each successful tmutil call). The persistent state handles:
-#   - Interrupted runs (Ctrl+C before all tmutil calls complete)
-#   - Spotlight indexing delays (tmutil sets xattr but Spotlight hasn't indexed it)
-verbose_timing "Building excluded-path cache via Spotlight…"
-mdfind -onlyin "${ASIMOV_SCAN_DIR}" "com_apple_backup_excludeItem = 'com.apple.backupd'" 2>/dev/null \
-    | sort -u > "$ASIMOV_EXCLUDED_CACHE" || true
-spotlight_count="$(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ')"
-# Merge persistent excluded + failed state into the Spotlight cache.
-# Failed paths (e.g. read-only dirs inside Go's module cache) are included so the bulk filter
-# skips them instantly instead of wasting time retrying tmutil.
-# Skipped under --no-read-cache (--full-scan / --no-cache): every path is then
-# re-verified against the tmutil isexcluded ground truth instead.
-if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && { [[ -f "$ASIMOV_EXCLUDED_STATE" ]] || [[ -f "$ASIMOV_FAILED_STATE" ]]; }; then
-    {
-        cat "$ASIMOV_EXCLUDED_CACHE"
-        if [[ -f "$ASIMOV_EXCLUDED_STATE" ]]; then cat "$ASIMOV_EXCLUDED_STATE"; fi
-        if [[ -f "$ASIMOV_FAILED_STATE" ]]; then cat "$ASIMOV_FAILED_STATE"; fi
-    } | sort -u > "${ASIMOV_EXCLUDED_CACHE}.merged"
-    mv -f "${ASIMOV_EXCLUDED_CACHE}.merged" "$ASIMOV_EXCLUDED_CACHE"
-fi
-verbose_timing "Excluded-path cache ready ($(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ') entries, ${spotlight_count} from Spotlight)"
-
 # Load optional config from ~/.config/asimov/config.
 # Populates ASIMOV_CONFIG_* variables. Missing file is silently ignored.
 load_config() {
@@ -199,6 +162,7 @@ load_config() {
     ASIMOV_CONFIG_EXTRA_FIXED_DIRS=()
     ASIMOV_CONFIG_EXTRA_SENTINELS=()
     ASIMOV_CONFIG_DISABLED_SENTINELS=()
+    ASIMOV_CONFIG_SCAN_DIRS=()
 
     [[ -f "$config_file" ]] || return 0
 
@@ -227,6 +191,10 @@ load_config() {
                     value="${value/#\~/$HOME}"
                     ASIMOV_CONFIG_EXTRA_FIXED_DIRS+=("$value")
                     ;;
+                scan:extra)
+                    value="${value/#\~/$HOME}"
+                    ASIMOV_CONFIG_SCAN_DIRS+=("$value")
+                    ;;
                 sentinels:extra)
                     ASIMOV_CONFIG_EXTRA_SENTINELS+=("$value")
                     ;;
@@ -243,6 +211,91 @@ load_config() {
 }
 
 load_config
+
+# Resolve the set of directories to scan into ASIMOV_SCAN_DIRS.
+#   - A positional CLI argument overrides everything: scan only that directory.
+#   - Otherwise scan the home directory plus any [scan] extra dirs from config.
+# Configured dirs that don't exist are warned about and skipped rather than
+# aborting the run (e.g. an unmounted external volume).
+ASIMOV_SCAN_DIRS=()
+if [[ -n "$ASIMOV_SCAN_DIR" ]]; then
+    if [[ ! -d "$ASIMOV_SCAN_DIR" ]]; then
+        echo "asimov: not a directory: ${ASIMOV_SCAN_DIR}" >&2
+        exit 1
+    fi
+    ASIMOV_SCAN_DIRS=("$ASIMOV_SCAN_DIR")
+else
+    ASIMOV_SCAN_DIRS=("$ASIMOV_ROOT")
+    for scan_dir in ${ASIMOV_CONFIG_SCAN_DIRS[@]+"${ASIMOV_CONFIG_SCAN_DIRS[@]}"}; do
+        if [[ ! -d "$scan_dir" ]]; then
+            [[ -z "$ASIMOV_QUIET" ]] && \
+                echo "asimov: configured scan directory does not exist, skipping: ${scan_dir}" >&2
+            continue
+        fi
+        ASIMOV_SCAN_DIRS+=("$scan_dir")
+    done
+fi
+
+# Drop any scan dir that equals or nests inside another (Time Machine exclusions
+# and find traversal are both recursive, so the parent already covers it). This
+# also collapses exact duplicates, e.g. a configured ~/Projects under $HOME.
+prune_nested_scan_dirs() {
+    local -a kept=()
+    local dir other nested dup k
+    for dir in "${ASIMOV_SCAN_DIRS[@]}"; do
+        nested=false
+        for other in "${ASIMOV_SCAN_DIRS[@]}"; do
+            [[ "$dir" == "$other" ]] && continue
+            if [[ "$dir" == "$other"/* ]]; then nested=true; break; fi
+        done
+        [[ "$nested" == true ]] && continue
+        dup=false
+        for k in ${kept[@]+"${kept[@]}"}; do
+            [[ "$k" == "$dir" ]] && { dup=true; break; }
+        done
+        [[ "$dup" == true ]] && continue
+        kept+=("$dir")
+    done
+    ASIMOV_SCAN_DIRS=("${kept[@]}")
+}
+prune_nested_scan_dirs
+readonly -a ASIMOV_SCAN_DIRS
+
+# When ignoring cached reads but still writing (e.g. --full-scan / --no-read-cache),
+# clear the append-only state so the rebuilt cache reflects only this run's results.
+# When not writing (--no-cache / --no-write-cache), leave every cache file untouched.
+# (The paths cache is truncated separately by init_path_cache before the full scan.)
+if [[ -n "$ASIMOV_NO_READ_CACHE" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
+    rm -f "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" "$ASIMOV_MDFIND_SEEN"
+fi
+
+# Build a cache of paths already excluded from Time Machine.
+# Merges Spotlight index (what macOS reports) with our own persistent state
+# (written after each successful tmutil call). The persistent state handles:
+#   - Interrupted runs (Ctrl+C before all tmutil calls complete)
+#   - Spotlight indexing delays (tmutil sets xattr but Spotlight hasn't indexed it)
+verbose_timing "Building excluded-path cache via Spotlight…"
+: > "$ASIMOV_EXCLUDED_CACHE"
+for scan_dir in "${ASIMOV_SCAN_DIRS[@]}"; do
+    mdfind -onlyin "$scan_dir" "com_apple_backup_excludeItem = 'com.apple.backupd'" 2>/dev/null \
+        >> "$ASIMOV_EXCLUDED_CACHE" || true
+done
+sort -u -o "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_EXCLUDED_CACHE"
+spotlight_count="$(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ')"
+# Merge persistent excluded + failed state into the Spotlight cache.
+# Failed paths (e.g. read-only dirs inside Go's module cache) are included so the bulk filter
+# skips them instantly instead of wasting time retrying tmutil.
+# Skipped under --no-read-cache (--full-scan / --no-cache): every path is then
+# re-verified against the tmutil isexcluded ground truth instead.
+if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && { [[ -f "$ASIMOV_EXCLUDED_STATE" ]] || [[ -f "$ASIMOV_FAILED_STATE" ]]; }; then
+    {
+        cat "$ASIMOV_EXCLUDED_CACHE"
+        if [[ -f "$ASIMOV_EXCLUDED_STATE" ]]; then cat "$ASIMOV_EXCLUDED_STATE"; fi
+        if [[ -f "$ASIMOV_FAILED_STATE" ]]; then cat "$ASIMOV_FAILED_STATE"; fi
+    } | sort -u > "${ASIMOV_EXCLUDED_CACHE}.merged"
+    mv -f "${ASIMOV_EXCLUDED_CACHE}.merged" "$ASIMOV_EXCLUDED_CACHE"
+fi
+verbose_timing "Excluded-path cache ready ($(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ') entries, ${spotlight_count} from Spotlight)"
 
 # --- Path cache ---
 readonly ASIMOV_PATH_CACHE="${ASIMOV_ROOT}/.cache/asimov/paths"
@@ -262,18 +315,22 @@ ensure_cache_dir() {
 }
 
 # Read cached paths, filtering to those that still exist as directories
-# and fall under ASIMOV_SCAN_DIR. Outputs valid paths to stdout.
+# and fall under one of the scan dirs. Outputs valid paths to stdout.
 read_path_cache() {
     [[ -f "$ASIMOV_PATH_CACHE" ]] || return 0
-    local line
+    local line d in_scope
     while IFS= read -r line; do
         # Skip comments and blank lines
         [[ "$line" =~ ^#  ]] && continue
         [[ -z "$line" ]] && continue
         # Must still exist as a directory
         [[ -d "$line" ]] || continue
-        # Must be under ASIMOV_SCAN_DIR
-        [[ "$line" == "${ASIMOV_SCAN_DIR}"/* || "$line" == "${ASIMOV_SCAN_DIR}" ]] || continue
+        # Must be under one of the scan dirs
+        in_scope=false
+        for d in "${ASIMOV_SCAN_DIRS[@]}"; do
+            if [[ "$line" == "${d}"/* || "$line" == "${d}" ]]; then in_scope=true; break; fi
+        done
+        [[ "$in_scope" == true ]] || continue
         printf '%s\n' "$line"
     done < "$ASIMOV_PATH_CACHE"
 }
@@ -401,7 +458,10 @@ discover_new_paths_via_mdfind() {
     local candidates_file uncached_file
     candidates_file="$(mktemp)"
     uncached_file="$(mktemp)"
-    mdfind -onlyin "$ASIMOV_SCAN_DIR" "$query" 2>/dev/null > "$candidates_file" || true
+    local scan_dir
+    for scan_dir in "${ASIMOV_SCAN_DIRS[@]}"; do
+        mdfind -onlyin "$scan_dir" "$query" 2>/dev/null >> "$candidates_file" || true
+    done
     if [[ ! -s "$candidates_file" ]]; then
         rm -f "$candidates_file" "$uncached_file"
         return 0
@@ -988,16 +1048,16 @@ else
     # Stream find output: tee writes to cache incrementally, pipe feeds exclusion.
     # On interrupt, tee has already appended every path find emitted, so the
     # next run can use the partial cache.
-    verbose_timing "Starting find traversal of ${ASIMOV_SCAN_DIR}…"
+    verbose_timing "Starting find traversal of ${ASIMOV_SCAN_DIRS[*]}…"
     if [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
         init_path_cache
-        { find "${ASIMOV_SCAN_DIR}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
+        { find "${ASIMOV_SCAN_DIRS[@]}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
             || true; } | tee -a "$ASIMOV_PATH_CACHE" | exclude_paths_from_stdin
         verbose_timing "Find + exclude complete"
         finalize_path_cache
         verbose_timing "Cache finalized"
     else
-        { find "${ASIMOV_SCAN_DIR}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
+        { find "${ASIMOV_SCAN_DIRS[@]}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
             || true; } | exclude_paths_from_stdin
         verbose_timing "Find + exclude complete"
     fi
