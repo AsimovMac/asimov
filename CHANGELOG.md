@@ -12,6 +12,14 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
   `make test BATS_JOBS=N` runs tests concurrently (needs GNU parallel).
+- Application cache exclusions: Spotify's offline storage, Chrome's on-device model stores,
+  and the `Cache` / `Code Cache` / `GPUCache` / `CachedData` / `CachedExtensionVSIXs` /
+  `*_crx_cache` directories that Electron and Chromium apps keep in
+  `~/Library/Application Support` (which, unlike `~/Library/Caches`, Time Machine does back up).
+  Enabled by default on new installs and off for anyone upgrading; controlled by
+  `[app_caches] enabled`. Resolves [#39](https://github.com/AsimovMac/asimov/issues/39).
+- Fixed-directory paths now support globs (`*`, `?`, `[...]`), both in the built-in lists and
+  in `[fixed_dirs] extra` — including paths that contain spaces.
 
 ### Changed
 
