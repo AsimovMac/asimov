@@ -104,12 +104,7 @@ Makefile                # Build targets (test, lint, check, install, uninstall)
 
 ### One-time setup
 
-1. Install signing keys (see [SSH-signed commits](#ssh-signed-commits-one-time-per-clone) below) in **both** the asimov clone *and* the homebrew-tap clone. `make bump-formula` commits in the tap and will fail if signing isn't configured there.
-2. Clone the tap alongside this repo:
-
-   ```sh
-   git clone git@github.com:django23/homebrew-tap.git ../homebrew-tap
-   ```
+Install signing keys (see [SSH-signed commits](#ssh-signed-commits-one-time-per-clone) below) in this clone — tags and commits must be signed.
 
 ### Per-release flow
 
@@ -124,10 +119,11 @@ gh pr merge <PR#> --squash --delete-branch
 git checkout main && git pull --ff-only
 
 make release                                 # signed tag + push (Actions publishes the GitHub release)
-make verify-release                          # brew upgrade + asimov --version
 ```
 
-**Homebrew distribution is homebrew-core.** After the GitHub release is published, bump the [homebrew-core formula](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/a/asimov.rb) with `brew bump-formula-pr --version=X.Y.Z asimov` (opens a PR against Homebrew/homebrew-core). The `bump-formula` / `ship-formula` targets are **legacy** — they push to the retired `django23/homebrew-tap` and are no longer part of the release flow.
+**Homebrew is homebrew-core, and it updates itself.** `asimov` is on Homebrew's autobump list, so BrewTestBot opens the version-bump PR automatically (~3h after a GitHub release) — there is **nothing to do** for a normal version release. Attempting `brew bump-formula-pr` for a version will fail with an autobump-exclusion error.
+
+Only *metadata* changes (homepage, url org, license) need a manual PR against [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/a/asimov.rb) — edit the formula, `brew style Formula/a/asimov.rb`, then open the PR. The old `django23/homebrew-tap` is archived and no longer used.
 
 If `gh pr create` fails with `Head sha can't be blank` (GraphQL indexing lag), retry once or fall back to the REST API:
 
@@ -140,7 +136,7 @@ gh api repos/AsimovMac/asimov/pulls -X POST \
 
 ### Beta releases
 
-Skip `prep-release` (no CHANGELOG promotion needed). Run `make release-beta` from any branch — it auto-increments the `-beta.N` suffix and marks the GitHub release as pre-release. Skip `bump-formula` and `ship-formula` for betas.
+Skip `prep-release` (no CHANGELOG promotion needed). Run `make release-beta` from any branch — it auto-increments the `-beta.N` suffix and marks the GitHub release as pre-release. Homebrew ignores pre-releases, so there's nothing else to do.
 
 ### If something goes wrong
 
@@ -152,8 +148,6 @@ git fetch --prune --prune-tags origin
 git tag -d vX.Y.Z 2>/dev/null || true
 make release                                  # re-tags from current main
 ```
-
-**`make bump-formula` fails with `gpg failed to sign the data: No secret key`.** The tap's git config doesn't have SSH signing set up. Apply the same `git config` block from the [SSH-signed commits](#ssh-signed-commits-one-time-per-clone) section inside `../homebrew-tap`.
 
 **CI fails on the release PR.** Fix locally, push to the PR branch, re-run `gh pr checks <PR#> --watch`. Don't merge until green.
 
