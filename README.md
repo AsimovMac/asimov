@@ -22,7 +22,7 @@ brew install asimov
 brew services start asimov
 ```
 
-> **Updating to v0.9.0:** the homebrew-core formula is being bumped from `0.3.0` → `0.9.0` ([tracking PR](https://github.com/Homebrew/homebrew-core/pulls?q=asimov)). Until it merges, `brew install asimov` still installs `0.3.0` — use the curl installer below for `0.9.0` today.
+> **Updating to v0.10.0:** the homebrew-core formula is being bumped from `0.3.0` → `0.10.0` ([tracking PR](https://github.com/Homebrew/homebrew-core/pulls?q=asimov)). Until it merges, `brew install asimov` still installs `0.3.0` — use the curl installer below for `0.10.0` today.
 
 ### curl (latest, no Homebrew)
 
@@ -30,7 +30,7 @@ brew services start asimov
 curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/main/scripts/install-remote.sh | bash
 ```
 
-Installs `v0.9.0` to `~/.local/bin`. Found a bug? [Open an issue](https://github.com/AsimovMac/asimov/issues).
+Installs `v0.10.0` to `~/.local/bin`. Found a bug? [Open an issue](https://github.com/AsimovMac/asimov/issues).
 
 ### Quick start
 

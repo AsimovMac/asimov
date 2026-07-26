@@ -20,7 +20,7 @@ if [[ "${NAME}" != "asimov" ]]; then
   exit 0
 fi
 
-# Migrate: remove the legacy fork agent (label renamed django23 -> stevegrunwell in v0.9.0).
+# Migrate: remove the legacy fork agent (label renamed django23 -> stevegrunwell in v0.10.0).
 if launchctl list | grep -q com.django23.asimov; then
   printf '\n\033[0;36mRemoving legacy com.django23.asimov agent\033[0m\n'
   launchctl remove com.django23.asimov 2>/dev/null || true

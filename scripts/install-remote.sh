@@ -35,7 +35,7 @@ chmod +x "${BIN_DIR}/asimov"
 curl -fsSL "${BASE_URL}/${PLIST_LABEL}.plist" | \
     sed "s|/usr/local/bin/asimov|${BIN_DIR}/asimov|" > "$PLIST_FILE"
 
-# Migrate: remove the legacy fork agent (label renamed django23 -> stevegrunwell in v0.9.0)
+# Migrate: remove the legacy fork agent (label renamed django23 -> stevegrunwell in v0.10.0)
 if launchctl list 2>/dev/null | grep -q com.django23.asimov; then
     launchctl remove com.django23.asimov 2>/dev/null || true
 fi

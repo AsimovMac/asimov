@@ -27,7 +27,7 @@ trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP"
 # @license MIT
 
 # Keep ASIMOV_VERSION in sync with CHANGELOG and package managers (e.g. Homebrew).
-readonly ASIMOV_VERSION='0.9.0'
+readonly ASIMOV_VERSION='0.10.0'
 
 print_usage() {
     printf 'Usage: asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [directory]\n'

@@ -1,11 +1,11 @@
 # Upgrading Asimov
 
-## To v0.9.0 (from the `django23/asimov` fork)
+## To v0.10.0 (from the `django23/asimov` fork)
 
-`0.9.0` folds the fork's work (v0.4.0–v0.8.0) back into the original project, now
-homed at [`AsimovMac/asimov`](https://github.com/AsimovMac/asimov) (transferred from
-`stevegrunwell/asimov`, which now redirects there). It also **reverts the LaunchAgent
-label** from `com.django23.asimov` back to the original `com.stevegrunwell.asimov`.
+`0.10.0` folds the fork's work (v0.4.0–v0.8.0, plus a `v0.9.0-beta` round) back into
+the original project, now homed at [`AsimovMac/asimov`](https://github.com/AsimovMac/asimov)
+(transferred from `stevegrunwell/asimov`, which now redirects there). It also **reverts
+the LaunchAgent label** from `com.django23.asimov` back to the original `com.stevegrunwell.asimov`.
 
 The installers remove the old `com.django23.asimov` agent for you. If you want to
 migrate by hand, unload the fork's agent first so you don't end up with two daily jobs:
@@ -15,7 +15,7 @@ launchctl bootout gui/$(id -u)/com.django23.asimov 2>/dev/null
 rm ~/Library/LaunchAgents/com.django23.asimov.plist 2>/dev/null
 ```
 
-Then install v0.9.0:
+Then install v0.10.0:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/main/scripts/install-remote.sh | bash
