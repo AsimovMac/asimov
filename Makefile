@@ -1,14 +1,9 @@
 .DEFAULT_GOAL := help
-.PHONY: help test lint check bench bench-home install uninstall exclusions version prep-release release release-beta bump-formula ship-formula verify-release
-
-TAP_DIR ?= ../homebrew-tap
+.PHONY: help test lint check bench bench-home install uninstall exclusions version prep-release release release-beta verify-release
 
 # Which GitHub repo + git remote releases target. Defaults to the project's home
-# (AsimovMac/asimov); override for the interim django23 tap flow, e.g.:
-#   make release-beta REPO=django23/asimov RELEASE_REMOTE=origin
-# Pinning GH_REPO to $(REPO) stops another configured remote from winning gh's
-# remote-detection — bit us in 0.6.4 when ship-formula hit an upstream release.yml
-# and 404'd.
+# (AsimovMac/asimov). Pinning GH_REPO to $(REPO) stops another configured remote
+# from winning gh's remote-detection.
 REPO ?= AsimovMac/asimov
 RELEASE_REMOTE ?= origin
 export GH_REPO ?= $(REPO)
@@ -87,7 +82,7 @@ release: check ## Tag and push a stable release — GitHub Actions will create t
 	git tag -s "$$TAG" -m "Release $$TAG"; \
 	git push $(RELEASE_REMOTE) "$$TAG"; \
 	echo "Tag $$TAG pushed — GitHub Actions will create the release."; \
-	echo "Next: run 'make ship-formula' to wait for release.yml, bump the tap formula, and push."
+	echo "Homebrew: homebrew-core autobumps the formula via BrewTestBot (~3h). Nothing to push."
 
 release-beta: check ## Tag and push a beta pre-release — GitHub Actions will create the pre-release
 	@set -e; \
@@ -103,46 +98,9 @@ release-beta: check ## Tag and push a beta pre-release — GitHub Actions will c
 	git push $(RELEASE_REMOTE) "$$TAG"; \
 	echo "Tag $$TAG pushed — GitHub Actions will create the pre-release."
 
-bump-formula: ## Update the Homebrew tap formula to match the current asimov version (TAP_DIR=../homebrew-tap)
-	@set -eo pipefail; \
-	if [ ! -d "$(TAP_DIR)/Formula" ]; then echo "error: $(TAP_DIR)/Formula not found — clone django23/homebrew-tap to $(TAP_DIR)"; exit 1; fi; \
-	VERSION=$$(./asimov --version); \
-	TAG="v$$VERSION"; \
-	URL="https://github.com/$(REPO)/archive/refs/tags/$$TAG.tar.gz"; \
-	echo "Fetching $$URL ..."; \
-	TARBALL=$$(mktemp); \
-	trap 'rm -f "$$TARBALL"' EXIT; \
-	if ! curl -fsSL "$$URL" -o "$$TARBALL"; then echo "error: download failed for $$URL (is the release published?)"; exit 1; fi; \
-	if [ ! -s "$$TARBALL" ]; then echo "error: downloaded tarball is empty — refusing to compute a hash"; exit 1; fi; \
-	SHA=$$(shasum -a 256 "$$TARBALL" | awk '{print $$1}'); \
-	EMPTY_SHA="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; \
-	if [ -z "$$SHA" ] || [ "$$SHA" = "$$EMPTY_SHA" ] || [ "$$SHA" = "0000000000000000000000000000000000000000000000000000000000000000" ]; then echo "error: refusing empty/zero sha256 (download likely failed; is the release published?)"; exit 1; fi; \
-	echo "sha256: $$SHA"; \
-	FORMULA="$(TAP_DIR)/Formula/asimov.rb"; \
-	/usr/bin/sed -i '' -E "s|url \"https://github.com/django23/asimov/archive/refs/tags/v[^\"]+\"|url \"$$URL\"|" "$$FORMULA"; \
-	/usr/bin/sed -i '' -E "s|sha256 \"[a-f0-9]{64}\"|sha256 \"$$SHA\"|" "$$FORMULA"; \
-	/usr/bin/sed -i '' -E "s|version \"[^\"]+\"|version \"$$VERSION\"|" "$$FORMULA"; \
-	echo "Updated $$FORMULA"; \
-	( cd "$(TAP_DIR)" && git diff --stat Formula/asimov.rb; \
-	  git add Formula/asimov.rb && \
-	  git commit -S -m "asimov $$VERSION" && \
-	  echo "Review the commit in $(TAP_DIR), then: cd $(TAP_DIR) && git push" )
-
-ship-formula: ## Wait for release.yml to finish, then bump-formula and push the tap
-	@set -e; \
-	echo "Waiting 15s for GitHub to register the release.yml run..."; \
-	sleep 15; \
-	RUN_ID=$$(gh run list --workflow=release.yml --limit=1 --json databaseId -q '.[0].databaseId'); \
-	if [ -z "$$RUN_ID" ]; then echo "error: no release.yml runs found — did 'make release' push the tag?"; exit 1; fi; \
-	echo "Watching run $$RUN_ID..."; \
-	gh run watch "$$RUN_ID" --exit-status; \
-	$(MAKE) bump-formula; \
-	echo "Pushing tap..."; \
-	( cd "$(TAP_DIR)" && git push ); \
-	echo "✓ Formula updated and pushed."
-
-verify-release: ## brew upgrade asimov and print the installed version
+verify-release: ## brew upgrade asimov and print the version homebrew-core currently serves
 	@set -e; \
 	brew update; \
 	brew upgrade asimov || brew install asimov; \
-	"$$(brew --prefix asimov)/bin/asimov" --version
+	"$$(brew --prefix asimov)/bin/asimov" --version; \
+	echo "Note: homebrew-core autobumps ~3h after a release, so this may lag the latest tag briefly."
