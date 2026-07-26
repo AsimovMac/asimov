@@ -15,27 +15,22 @@ Asimov scans your home directory, finds dependency folders next to their config 
 
 ## Install
 
-### Stable — v0.3.0
-
-The last release from Asimov's original maintainer, available in homebrew-core:
+### Homebrew
 
 ```sh
 brew install asimov
 brew services start asimov
 ```
 
-It's from 2020 and predates everything below — no config file, far fewer ecosystems, and a full scan on every run. A new stable lands once the beta settles.
+> **Updating to v0.9.0:** the homebrew-core formula is being bumped from `0.3.0` → `0.9.0` ([tracking PR](https://github.com/Homebrew/homebrew-core/pulls?q=asimov)). Until it merges, `brew install asimov` still installs `0.3.0` — use the curl installer below for `0.9.0` today.
 
-### Beta — v0.9.0-beta.2 *(recommended)*
-
-Where active development lives: 30+ more ecosystems, a config file, `--dry-run`, and caching that takes typical runs from ~75s to ~1–2s.
+### curl (latest, no Homebrew)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.2/scripts/install-remote.sh \
-  | ASIMOV_REF=v0.9.0-beta.2 bash
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/main/scripts/install-remote.sh | bash
 ```
 
-Installs to `~/.local/bin`. Feedback and bug reports very welcome — [open an issue](https://github.com/AsimovMac/asimov/issues).
+Installs `v0.9.0` to `~/.local/bin`. Found a bug? [Open an issue](https://github.com/AsimovMac/asimov/issues).
 
 ### Quick start
 
@@ -143,6 +138,18 @@ launchctl bootout   gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
 ## Configuration
 
 Asimov works out of the box. To customize it, drop a config file at `~/.config/asimov/config`. The most useful thing you can do here is **teach it dependency directories of your own.**
+
+### Scan more than your home directory
+
+By default Asimov scans your home directory. Keep projects elsewhere too — say under `/private/var/www`? Add each extra root under a `[scan]` section and it's scanned on every run, alongside home:
+
+```ini
+[scan]
+extra = /private/var/www         # one "extra =" line per directory
+extra = /Volumes/Work/clients    # ~ is expanded, e.g. extra = ~/Sites
+```
+
+Your home directory is always scanned; these are added to it. Configured directories that don't exist (an unmounted volume, say) are skipped with a warning instead of failing the run. Passing a directory on the command line (`asimov /some/path`) still overrides everything and scans only that path.
 
 ### Add your own patterns
 

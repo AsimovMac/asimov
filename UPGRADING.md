@@ -15,11 +15,10 @@ launchctl bootout gui/$(id -u)/com.django23.asimov 2>/dev/null
 rm ~/Library/LaunchAgents/com.django23.asimov.plist 2>/dev/null
 ```
 
-Then install the beta:
+Then install v0.9.0:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/v0.9.0-beta.1/scripts/install-remote.sh \
-  | ASIMOV_REF=v0.9.0-beta.1 bash
+curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/main/scripts/install-remote.sh | bash
 ```
 
 Your `~/.config/asimov/config` and `~/.cache/asimov/` are unaffected.
