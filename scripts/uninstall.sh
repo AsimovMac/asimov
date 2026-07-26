@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/vars"
 printf '\n\033[0;36mRemoving command %s\033[0m\n' "${BIN}"
 [[ -f ${BIN} ]] && rm "${BIN}"
 
-# Remove the legacy fork agent too (label renamed django23 -> stevegrunwell in v0.9.0).
+# Remove the legacy fork agent too (label renamed django23 -> stevegrunwell in v0.10.0).
 if launchctl list | grep -q com.django23.asimov; then
   launchctl remove com.django23.asimov 2>/dev/null || true
 fi
