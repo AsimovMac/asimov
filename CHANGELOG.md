@@ -20,6 +20,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   `[app_caches] enabled`. Resolves [#39](https://github.com/AsimovMac/asimov/issues/39).
 - Fixed-directory paths now support globs (`*`, `?`, `[...]`), both in the built-in lists and
   in `[fixed_dirs] extra` — including paths that contain spaces.
+- Service-worker caches (`Service Worker/CacheStorage` and `Service Worker/ScriptCache`) and
+  Claude Desktop's `vm_bundles` sandbox images are now part of the application-cache set,
+  measured at 12.6 GB across 32 directories on one everyday Mac. The sibling
+  `Service Worker/Database`, which holds the worker registrations, is deliberately left
+  backed up.
 
 ### Changed
 

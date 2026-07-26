@@ -898,3 +898,51 @@ enabled = false"
   run_asimov --full-scan
   refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
 }
+
+# =============================================================================
+# Application caches: service-worker caches
+# =============================================================================
+
+@test "app caches: excludes the service-worker CacheStorage" {
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Google/Chrome/Default/Service Worker/CacheStorage"
+  create_app_support_dir "Arc/User Data/Profile 3/Service Worker/CacheStorage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Asana/Service Worker/CacheStorage"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Default/Service Worker/CacheStorage"
+  assert_excluded "${HOME}/Library/Application Support/Arc/User Data/Profile 3/Service Worker/CacheStorage"
+}
+
+@test "app caches: excludes the service-worker ScriptCache" {
+  create_app_support_dir "Asana/Service Worker/ScriptCache"
+  create_app_support_dir "Google/Chrome/Default/Service Worker/ScriptCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Asana/Service Worker/ScriptCache"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Default/Service Worker/ScriptCache"
+}
+
+@test "app caches: leaves the service-worker registration database alone" {
+  # Database/ holds the registrations. Losing it logs you out of web apps and
+  # drops their offline mode, so only the cache siblings are excluded.
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Asana/Service Worker/Database"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker"
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker/Database"
+}
+
+@test "app caches: excludes Claude Desktop's sandbox images" {
+  create_app_support_dir "Claude/vm_bundles"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Claude/vm_bundles"
+}
+
+@test "app caches: service-worker caches respect the opt-out" {
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Claude/vm_bundles"
+  write_config "[app_caches]
+enabled = false"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker/CacheStorage"
+  refute_excluded "${HOME}/Library/Application Support/Claude/vm_bundles"
+}

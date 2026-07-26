@@ -746,6 +746,21 @@ readonly ASIMOV_APP_CACHE_DIRS=(
     "${ASIMOV_APP_SUPPORT}/Arc/ArchiveItemsFaviconCache"
     "${ASIMOV_APP_SUPPORT}/Arc/ArchiveSnapshotCache"
     "${ASIMOV_APP_SUPPORT}/Arc/BoostsImageCache"
+
+    # Service-worker caches. Deliberately narrow: CacheStorage is an HTTP cache by
+    # specification, and ScriptCache holds copies of the worker scripts, so both
+    # refetch from origin. Their sibling Database/ holds the worker registrations
+    # and is NOT excluded — losing that is what logs you out of a web app or drops
+    # its offline mode, and it is tiny anyway.
+    "${ASIMOV_APP_SUPPORT}/*/Service Worker/CacheStorage"
+    "${ASIMOV_APP_SUPPORT}/*/*/Service Worker/CacheStorage"
+    "${ASIMOV_APP_SUPPORT}/*/*/*/Service Worker/CacheStorage"
+    "${ASIMOV_APP_SUPPORT}/*/Service Worker/ScriptCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/Service Worker/ScriptCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/*/Service Worker/ScriptCache"
+
+    # Claude Desktop's sandbox images, rebuilt on demand.
+    "${ASIMOV_APP_SUPPORT}/Claude/vm_bundles"
 )
 
 # Expand one fixed-dir pattern into the directories that exist, one per line.
