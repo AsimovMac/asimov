@@ -144,5 +144,5 @@ ship-formula: ## Wait for release.yml to finish, then bump-formula and push the 
 verify-release: ## brew upgrade asimov and print the installed version
 	@set -e; \
 	brew update; \
-	brew upgrade asimov || brew install django23/tap/asimov; \
+	brew upgrade asimov || brew install asimov; \
 	"$$(brew --prefix asimov)/bin/asimov" --version

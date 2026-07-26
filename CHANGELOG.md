@@ -15,16 +15,17 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Removed
 
-## [0.9.0] — 2026-07-15
+## [0.9.0] — 2026-07-26
 
 First release under the project's new home, [`AsimovMac/asimov`](https://github.com/AsimovMac/asimov)
 — the original [`stevegrunwell/asimov`](https://github.com/stevegrunwell/asimov)
 repository transferred to a dedicated organization (stars, history, and the old
 URL preserved via GitHub's redirect). Folds in all fork work from v0.4.0 through
-v0.8.0. Shipped as a pre-release for testing first.
+v0.8.0, after a `v0.9.0-beta.1`/`beta.2` testing round.
 
 ### Added
 
+- Scan directories beyond your home directory. Add a `[scan]` section to `~/.config/asimov/config` with one `extra =` line per additional root (e.g. `extra = /private/var/www`); each is scanned on every run alongside home. Configured directories that don't exist are skipped with a warning rather than failing the run, and directories nested inside another scanned root are pruned to avoid traversing the same tree twice ([#108](https://github.com/AsimovMac/asimov/issues/108))
 - Go's module cache (`~/go/pkg/mod`) is now one of the built-in global caches (opt-in via `[fixed_dirs] enabled = true`). Excluding the cache root covers every dependency inside it in a single `tmutil` call, instead of attempting each `vendor/` directory individually (~11s apiece, and doomed — see below). Using a custom `GOPATH`? Add it with `[fixed_dirs] extra`
 
 ### Changed

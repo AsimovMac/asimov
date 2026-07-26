@@ -123,10 +123,11 @@ gh pr checks <PR#> --watch --fail-fast
 gh pr merge <PR#> --squash --delete-branch
 git checkout main && git pull --ff-only
 
-make release                                 # signed tag + push
-make ship-formula                            # waits for release.yml, bumps tap formula, pushes
+make release                                 # signed tag + push (Actions publishes the GitHub release)
 make verify-release                          # brew upgrade + asimov --version
 ```
+
+**Homebrew distribution is homebrew-core.** After the GitHub release is published, bump the [homebrew-core formula](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/a/asimov.rb) with `brew bump-formula-pr --version=X.Y.Z asimov` (opens a PR against Homebrew/homebrew-core). The `bump-formula` / `ship-formula` targets are **legacy** — they push to the retired `django23/homebrew-tap` and are no longer part of the release flow.
 
 If `gh pr create` fails with `Head sha can't be blank` (GraphQL indexing lag), retry once or fall back to the REST API:
 
