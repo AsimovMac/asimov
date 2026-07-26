@@ -734,3 +734,310 @@ extra = ${HOME}/Code"
   [[ "$(count_exclusions)" -eq 1 ]]
   refute_excluded "${HOME}/Projects/app/node_modules"
 }
+
+# =============================================================================
+# Glob support in fixed directories
+# =============================================================================
+
+@test "fixed dirs: extra path expands a glob" {
+  mkdir -p "${HOME}/builds/alpha/dist"
+  mkdir -p "${HOME}/builds/beta/dist"
+  write_config "[fixed_dirs]
+extra = ~/builds/*/dist"
+
+  run_asimov
+
+  assert_excluded "${HOME}/builds/alpha/dist"
+  assert_excluded "${HOME}/builds/beta/dist"
+}
+
+@test "fixed dirs: glob expansion keeps paths containing spaces intact" {
+  mkdir -p "${HOME}/Application Support/My App/Code Cache"
+  write_config "[fixed_dirs]
+extra = ~/Application Support/*/Code Cache"
+
+  run_asimov
+
+  assert_excluded "${HOME}/Application Support/My App/Code Cache"
+}
+
+@test "fixed dirs: glob matching nothing is not an error" {
+  write_config "[fixed_dirs]
+extra = ~/nowhere/*/dist"
+
+  run_asimov
+
+  [[ "$status" -eq 0 ]]
+  [[ "$(count_exclusions)" -eq 0 ]]
+}
+
+@test "fixed dirs: glob only matches directories, not files" {
+  mkdir -p "${HOME}/builds/alpha"
+  touch "${HOME}/builds/alpha/dist"
+  write_config "[fixed_dirs]
+extra = ~/builds/*/dist"
+
+  run_asimov
+
+  [[ "$status" -eq 0 ]]
+  refute_excluded "${HOME}/builds/alpha/dist"
+}
+
+# =============================================================================
+# Application caches
+# =============================================================================
+
+# Create a directory under ~/Library/Application Support.
+create_app_support_dir() {
+  mkdir -p "${HOME}/Library/Application Support/$1"
+}
+
+# Simulate a machine that has already run an earlier version of Asimov.
+simulate_prior_install() {
+  mkdir -p "${HOME}/.cache/asimov"
+  echo "${HOME}/some/old/path" > "${HOME}/.cache/asimov/excluded"
+}
+
+@test "app caches: excluded by default on a new install" {
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: matches a named cache one level below Application Support" {
+  create_app_support_dir "discord/Cache"
+  create_app_support_dir "Code/CachedExtensionVSIXs"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/discord/Cache"
+  assert_excluded "${HOME}/Library/Application Support/Code/CachedExtensionVSIXs"
+}
+
+@test "app caches: matches a named cache two levels below Application Support" {
+  create_app_support_dir "Arc/User Data/Code Cache"
+  create_app_support_dir "Google/Chrome/component_crx_cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Arc/User Data/Code Cache"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/component_crx_cache"
+}
+
+@test "app caches: leaves non-cache directories alone" {
+  create_app_support_dir "Code/User"
+  create_app_support_dir "Google/Chrome/Default"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Code/User"
+  refute_excluded "${HOME}/Library/Application Support/Google/Chrome/Default"
+}
+
+@test "app caches: not excluded when the machine has prior Asimov state" {
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: existing user can opt in explicitly" {
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  write_config "[app_caches]
+enabled = true"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: new install can opt out explicitly" {
+  create_app_support_dir "Spotify/PersistentCache"
+  write_config "[app_caches]
+enabled = false"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: first run records the resolved default" {
+  run_asimov
+  [[ -f "${HOME}/.local/state/asimov/profile" ]]
+  grep -qx 'app_caches_default=true' "${HOME}/.local/state/asimov/profile"
+}
+
+@test "app caches: an upgrader's recorded default is off" {
+  simulate_prior_install
+  run_asimov
+  grep -qx 'app_caches_default=false' "${HOME}/.local/state/asimov/profile"
+}
+
+@test "app caches: recorded default survives a cache wipe" {
+  # Existing user: default resolves to off and is recorded.
+  simulate_prior_install
+  run_asimov
+  grep -qx 'app_caches_default=false' "${HOME}/.local/state/asimov/profile"
+
+  # Wiping the cache would otherwise make them look like a new install.
+  rm -rf "${HOME}/.cache/asimov"
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: dry-run does not record a default" {
+  run_asimov --dry-run
+  [[ "$status" -eq 0 ]]
+  [[ ! -f "${HOME}/.local/state/asimov/profile" ]]
+}
+
+@test "app caches: --no-write-cache does not record a default" {
+  run_asimov --no-write-cache
+  [[ "$status" -eq 0 ]]
+  [[ ! -f "${HOME}/.local/state/asimov/profile" ]]
+}
+
+@test "app caches: a full scan by an existing user still counts as an upgrade" {
+  # --no-read-cache clears the state files, so the prior-install signal must be
+  # captured before that happens.
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov --full-scan
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+# =============================================================================
+# Application caches: depth, case, and named cache types
+# =============================================================================
+
+@test "app caches: matches a named cache three levels below Application Support" {
+  # Notion, Figma and Cursor nest caches under a Partitions/profile directory.
+  create_app_support_dir "Notion/Partitions/notion/Cache"
+  create_app_support_dir "Figma/DesktopProfile/v20/Code Cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Notion/Partitions/notion/Cache"
+  assert_excluded "${HOME}/Library/Application Support/Figma/DesktopProfile/v20/Code Cache"
+}
+
+@test "app caches: matches a lowercase cache directory" {
+  # Zed ships node/cache; most apps ship Cache. Only nocaseglob catches both on a
+  # case-sensitive volume.
+  create_app_support_dir "Zed/node/cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Zed/node/cache"
+}
+
+@test "app caches: matches all four Chromium shader caches" {
+  create_app_support_dir "Chromium/GraphiteDawnCache"
+  create_app_support_dir "Chromium/GrShaderCache"
+  create_app_support_dir "Chromium/ShaderCache"
+  create_app_support_dir "Chromium/DawnWebGPUCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Chromium/GraphiteDawnCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/GrShaderCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/ShaderCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/DawnWebGPUCache"
+}
+
+@test "app caches: matches on-device model stores for any Chromium browser" {
+  create_app_support_dir "Microsoft Edge/OptGuideOnDeviceModel"
+  create_app_support_dir "BraveSoftware/Brave-Browser/optimization_guide_model_store"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Microsoft Edge/OptGuideOnDeviceModel"
+  assert_excluded "${HOME}/Library/Application Support/BraveSoftware/Brave-Browser/optimization_guide_model_store"
+}
+
+@test "app caches: matches the service-worker cache inside VS Code-family editors" {
+  create_app_support_dir "Cursor/WebStorage/1/CacheStorage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Cursor/WebStorage/1/CacheStorage"
+}
+
+@test "app caches: leaves the WebStorage parent alone" {
+  # WebStorage itself holds localStorage; only its CacheStorage child is cache.
+  create_app_support_dir "Cursor/WebStorage/1/CacheStorage"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Cursor/WebStorage"
+  refute_excluded "${HOME}/Library/Application Support/Cursor/WebStorage/1"
+}
+
+@test "app caches: matches crash dumps and transient blob spools" {
+  create_app_support_dir "Lens/Crashpad"
+  create_app_support_dir "Messenger/crashpad"
+  create_app_support_dir "Firefox/Crash Reports"
+  create_app_support_dir "Slack/blob_storage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Lens/Crashpad"
+  assert_excluded "${HOME}/Library/Application Support/Messenger/crashpad"
+  assert_excluded "${HOME}/Library/Application Support/Firefox/Crash Reports"
+  assert_excluded "${HOME}/Library/Application Support/Slack/blob_storage"
+}
+
+@test "app caches: matches downloadable modules and blocklists" {
+  create_app_support_dir "Vivaldi/WidevineCdm"
+  create_app_support_dir "Google/Chrome/Safe Browsing"
+  create_app_support_dir "Signal/update-cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Vivaldi/WidevineCdm"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Safe Browsing"
+  assert_excluded "${HOME}/Library/Application Support/Signal/update-cache"
+}
+
+@test "app caches: matches a literal Caches directory" {
+  create_app_support_dir "Caches"
+  create_app_support_dir "SomeApp/Caches"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Caches"
+  assert_excluded "${HOME}/Library/Application Support/SomeApp/Caches"
+}
+
+@test "app caches: matches the vendor-specific caches" {
+  create_app_support_dir "Google/GoogleUpdater/crx_cache"
+  create_app_support_dir "Google/DriveFS/cef_cache"
+  create_app_support_dir "Notion/notionAssetCache-v2"
+  create_app_support_dir "Steam/appcache"
+  create_app_support_dir "Steam/config/htmlcache"
+  create_app_support_dir "Setapp/Default/SetappIcons/com.onevcat.Kingfisher.ImageCache.setapp"
+  create_app_support_dir "SketchUp 2026/WebCache-137.0.7151.121"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Google/GoogleUpdater/crx_cache"
+  assert_excluded "${HOME}/Library/Application Support/Google/DriveFS/cef_cache"
+  assert_excluded "${HOME}/Library/Application Support/Notion/notionAssetCache-v2"
+  assert_excluded "${HOME}/Library/Application Support/Steam/appcache"
+  assert_excluded "${HOME}/Library/Application Support/Steam/config/htmlcache"
+  assert_excluded "${HOME}/Library/Application Support/Setapp/Default/SetappIcons/com.onevcat.Kingfisher.ImageCache.setapp"
+  assert_excluded "${HOME}/Library/Application Support/SketchUp 2026/WebCache-137.0.7151.121"
+}
+
+@test "app caches: a nested match is excluded only once, via its ancestor" {
+  # */Cache and */*/Cache can both match when one nests inside the other.
+  # Time Machine exclusions are recursive, so only the ancestor is worth a call.
+  create_app_support_dir "App/Cache/inner/Cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/App/Cache"
+  refute_excluded "${HOME}/Library/Application Support/App/Cache/inner/Cache"
+  [[ "$(count_exclusions)" -eq 1 ]]
+}
+
+@test "app caches: nothing outside Application Support is touched" {
+  # Deliberately scoped: ~/Library/Unity/cache and ~/Library/Mail caches are not ours.
+  mkdir -p "${HOME}/Library/Unity/cache"
+  mkdir -p "${HOME}/Library/Mail/V10/MailData/RemoteContentURLCache"
+  run_asimov
+  refute_excluded "${HOME}/Library/Unity/cache"
+  refute_excluded "${HOME}/Library/Mail/V10/MailData/RemoteContentURLCache"
+}
+
+@test "fixed dirs: glob expansion works under bash 3.2 (the system bash)" {
+  # asimov ships with #!/usr/bin/env bash, so on a stock Mac it runs under bash
+  # 3.2. bash 3.2 joins the elements of an unquoted array expansion while IFS is
+  # empty, which silently reduced every multi-match glob to nothing. The local
+  # suite runs under whatever bash is first on PATH, so this asserts 3.2 directly.
+  [[ -x /bin/bash ]] || skip "no /bin/bash available"
+  mkdir -p "${HOME}/builds/alpha/dist" "${HOME}/builds/beta/dist" "${HOME}/app/Code Cache"
+
+  run /bin/bash -c '
+    set -Eeu -o pipefail
+    eval "$(awk "/^expand_fixed_dir\(\)/,/^}/" "$1")"
+    expand_fixed_dir "$2/builds/*/dist"
+    expand_fixed_dir "$2/*/Code Cache"
+  ' _ "${BATS_TEST_DIRNAME}/../asimov" "$HOME"
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"${HOME}/builds/alpha/dist"* ]]
+  [[ "$output" == *"${HOME}/builds/beta/dist"* ]]
+  [[ "$output" == *"${HOME}/app/Code Cache"* ]]
+}

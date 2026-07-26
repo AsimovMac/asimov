@@ -54,6 +54,12 @@ print_usage() {
     printf '\n'
     printf '  [scan]\n'
     printf '  extra = /private/var/www\n'
+    printf '\n'
+    printf 'Application caches (Spotify, Electron apps, browser model stores) are excluded\n'
+    printf 'by default on new installs. Turn them off with:\n'
+    printf '\n'
+    printf '  [app_caches]\n'
+    printf '  enabled = false\n'
 }
 
 # Parse options (before we need ASIMOV_ROOT).
@@ -152,12 +158,30 @@ readonly ASIMOV_EXCLUDED_STATE="${ASIMOV_ROOT}/.cache/asimov/excluded"
 readonly ASIMOV_FAILED_STATE="${ASIMOV_ROOT}/.cache/asimov/failed"
 readonly ASIMOV_MDFIND_SEEN="${ASIMOV_ROOT}/.cache/asimov/mdfind_seen"
 
+# Durable record of which defaults this installation was set up with. Lives in
+# ~/.local/state (not ~/.cache) precisely because it must survive a cache wipe.
+readonly ASIMOV_PROFILE_STATE="${ASIMOV_ROOT}/.local/state/asimov/profile"
+
+# Note whether this machine carries state from an earlier Asimov run. Computed
+# here, before the --no-read-cache branch below deletes any of it — otherwise an
+# upgrader whose first run is --full-scan would look like a brand-new install and
+# silently pick up new defaults.
+if [[ -e "$ASIMOV_EXCLUDED_STATE" || -e "$ASIMOV_FAILED_STATE" \
+   || -e "$ASIMOV_MDFIND_SEEN" || -e "${ASIMOV_ROOT}/.cache/asimov/paths" ]]; then
+    readonly ASIMOV_HAD_PRIOR_STATE=true
+else
+    readonly ASIMOV_HAD_PRIOR_STATE=false
+fi
+
 # Load optional config from ~/.config/asimov/config.
 # Populates ASIMOV_CONFIG_* variables. Missing file is silently ignored.
 load_config() {
     local config_file="${ASIMOV_ROOT}/.config/asimov/config"
 
     ASIMOV_CONFIG_FIXED_DIRS_ENABLED=false
+    # Empty means "not set" — the default is resolved later from the install
+    # profile, so we must be able to tell an absent key from an explicit false.
+    ASIMOV_CONFIG_APP_CACHES_ENABLED=''
     ASIMOV_CONFIG_EXTRA_FIXED_DIRS=()
     ASIMOV_CONFIG_EXTRA_SENTINELS=()
     ASIMOV_CONFIG_DISABLED_SENTINELS=()
@@ -189,6 +213,9 @@ load_config() {
                 fixed_dirs:extra)
                     value="${value/#\~/$HOME}"
                     ASIMOV_CONFIG_EXTRA_FIXED_DIRS+=("$value")
+                    ;;
+                app_caches:enabled)
+                    ASIMOV_CONFIG_APP_CACHES_ENABLED="$value"
                     ;;
                 scan:extra)
                     value="${value/#\~/$HOME}"
@@ -671,6 +698,8 @@ readonly ASIMOV_VENDOR_DIR_SENTINELS=(
 # Unlike sentinel-based pairs above, these directories are always excluded
 # when they exist — they represent global tool caches and artifacts that
 # can be safely restored.
+#
+# Entries may contain glob metacharacters (*, ?, [...]); see expand_fixed_dir.
 readonly ASIMOV_FIXED_DIRS=(
     "${ASIMOV_ROOT}/.cache"                           # XDG cache directory
     "${ASIMOV_ROOT}/.gradle/caches"                   # Gradle download cache
@@ -682,6 +711,152 @@ readonly ASIMOV_FIXED_DIRS=(
     "${ASIMOV_ROOT}/.kube/http-cache"                 # Kubernetes HTTP cache
     "${ASIMOV_ROOT}/go/pkg/mod"                       # Go module cache (0555 inside; exclude as a whole)
 )
+
+# Non-developer application caches, controlled by [app_caches] enabled.
+#
+# Only ~/Library/Application Support is worth listing here. macOS already excludes
+# ~/Library/Caches, ~/Library/Logs, ~/Library/Containers and ~/.Trash from Time
+# Machine, so anything under those is already handled — but Electron and Chromium
+# apps keep their caches in Application Support, which *is* backed up.
+#
+# Cache directory names recur at several depths (Code/Cache, Arc/User Data/Code
+# Cache, Notion/Partitions/notion/Cache), and a glob does not cross a slash, so
+# each name is listed at every depth it is known to occur.
+readonly ASIMOV_APP_SUPPORT="${ASIMOV_ROOT}/Library/Application Support"
+readonly ASIMOV_APP_CACHE_DIRS=(
+    # Electron and Chromium HTTP / compiled-JS / GPU caches.
+    #
+    # [Cc] on the names that vary in practice (Zed ships node/cache, Messenger
+    # ships crashpad, everyone else capitalises). A trailing literal component is
+    # only ever existence-tested, never globbed, so it would match nothing at all
+    # on a case-sensitive volume; a bracket makes it a real glob.
+    "${ASIMOV_APP_SUPPORT}/*/[Cc]ache"
+    "${ASIMOV_APP_SUPPORT}/*/*/[Cc]ache"
+    "${ASIMOV_APP_SUPPORT}/*/*/*/[Cc]ache"
+    "${ASIMOV_APP_SUPPORT}/[Cc]aches"
+    "${ASIMOV_APP_SUPPORT}/*/[Cc]aches"
+    "${ASIMOV_APP_SUPPORT}/*/Code Cache"
+    "${ASIMOV_APP_SUPPORT}/*/*/Code Cache"
+    "${ASIMOV_APP_SUPPORT}/*/*/*/Code Cache"
+    "${ASIMOV_APP_SUPPORT}/*/GPUCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/GPUCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/*/GPUCache"
+
+    # Shader caches. Chromium has accumulated four of these over the years and
+    # still writes all of them.
+    "${ASIMOV_APP_SUPPORT}/*/DawnWebGPUCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/DawnWebGPUCache"
+    "${ASIMOV_APP_SUPPORT}/*/GraphiteDawnCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/GraphiteDawnCache"
+    "${ASIMOV_APP_SUPPORT}/*/GrShaderCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/GrShaderCache"
+    "${ASIMOV_APP_SUPPORT}/*/ShaderCache"
+    "${ASIMOV_APP_SUPPORT}/*/*/ShaderCache"
+
+    # VS Code family (Code, Cursor, VSCodium, Kiro, Antigravity, Windsurf …).
+    "${ASIMOV_APP_SUPPORT}/*/CachedData"                # V8 code cache
+    "${ASIMOV_APP_SUPPORT}/*/CachedExtensionVSIXs"      # re-downloadable .vsix archives
+    "${ASIMOV_APP_SUPPORT}/*/WebStorage/*/CacheStorage" # service-worker HTTP cache
+
+    # Chromium downloads: components, extensions, on-device models, blocklists.
+    # Globbed rather than named per browser, so Edge/Brave/Vivaldi/Chromium and
+    # the Chrome channels are covered without tracking each one.
+    "${ASIMOV_APP_SUPPORT}/*/component_crx_cache"
+    "${ASIMOV_APP_SUPPORT}/*/*/component_crx_cache"
+    "${ASIMOV_APP_SUPPORT}/*/extensions_crx_cache"
+    "${ASIMOV_APP_SUPPORT}/*/*/extensions_crx_cache"
+    "${ASIMOV_APP_SUPPORT}/*/OptGuideOnDevice*"
+    "${ASIMOV_APP_SUPPORT}/*/*/OptGuideOnDevice*"
+    "${ASIMOV_APP_SUPPORT}/*/optimization_guide*"
+    "${ASIMOV_APP_SUPPORT}/*/*/optimization_guide*"
+    "${ASIMOV_APP_SUPPORT}/*/Safe Browsing"
+    "${ASIMOV_APP_SUPPORT}/*/*/Safe Browsing"
+    "${ASIMOV_APP_SUPPORT}/*/WidevineCdm"               # DRM module, re-downloaded
+    "${ASIMOV_APP_SUPPORT}/*/*/WidevineCdm"
+
+    # Crash dumps awaiting upload, and Electron's transient blob spool.
+    "${ASIMOV_APP_SUPPORT}/*/[Cc]rashpad"
+    "${ASIMOV_APP_SUPPORT}/*/*/[Cc]rashpad"
+    "${ASIMOV_APP_SUPPORT}/*/Crash Reports"
+    "${ASIMOV_APP_SUPPORT}/*/blob_storage"
+    "${ASIMOV_APP_SUPPORT}/*/*/blob_storage"
+
+    # Downloaded app updates (Signal, Slack, Discord share this name).
+    "${ASIMOV_APP_SUPPORT}/*/update-cache"
+
+    # Vendor-specific caches that follow no shared convention.
+    "${ASIMOV_APP_SUPPORT}/Spotify/PersistentCache"     # offline audio, refetched on demand
+    "${ASIMOV_APP_SUPPORT}/Google/GoogleUpdater/crx_cache"
+    "${ASIMOV_APP_SUPPORT}/Google/DriveFS/cef_cache"
+    "${ASIMOV_APP_SUPPORT}/Notion/notionAssetCache-v2"
+    "${ASIMOV_APP_SUPPORT}/Steam/appcache"
+    "${ASIMOV_APP_SUPPORT}/Steam/config/htmlcache"
+    "${ASIMOV_APP_SUPPORT}/Setapp/*/SetappIcons/*ImageCache*"
+    "${ASIMOV_APP_SUPPORT}/SketchUp*/WebCache-*"
+    "${ASIMOV_APP_SUPPORT}/Arc/SidebarItemsFaviconCache"
+    "${ASIMOV_APP_SUPPORT}/Arc/ArchiveItemsFaviconCache"
+    "${ASIMOV_APP_SUPPORT}/Arc/ArchiveSnapshotCache"
+    "${ASIMOV_APP_SUPPORT}/Arc/BoostsImageCache"
+)
+
+# Expand one fixed-dir pattern into the directories that exist, one per line.
+#
+# Patterns without glob metacharacters keep the fast path (a single -d test), so
+# the common case pays nothing. When globbing is needed, IFS is cleared to switch
+# off word splitting while leaving pathname expansion active — without that, every
+# path containing a space ("Application Support") would shatter into fragments.
+#
+# Matching is case-insensitive (nocaseglob). Apps are inconsistent about it —
+# Zed ships node/cache while everyone else ships Cache — and that only goes
+# unnoticed because APFS is case-insensitive by default. On a case-sensitive
+# volume, a case-sensitive glob would silently match nothing.
+expand_fixed_dir() {
+    local pattern="$1"
+
+    if [[ "$pattern" != *'*'* && "$pattern" != *'?'* && "$pattern" != *'['* ]]; then
+        [[ -d "$pattern" ]] && printf '%s\n' "$pattern"
+        return 0
+    fi
+
+    local nullglob_was_set=false nocaseglob_was_set=false
+    shopt -q nullglob && nullglob_was_set=true
+    shopt -q nocaseglob && nocaseglob_was_set=true
+    shopt -s nullglob nocaseglob
+
+    # Clear IFS for the expansion only, then put it back immediately. bash 3.2 is
+    # still the system bash on macOS, and it mangles an unquoted array expansion
+    # while IFS is empty: every element gets joined into one string. Restoring IFS
+    # before the array is read back keeps 3.2 and 5.x in agreement.
+    local -a matches=()
+    local saved_ifs="$IFS"
+    IFS=''
+    # shellcheck disable=SC2206  # deliberate: globbing with splitting disabled
+    matches=($pattern)
+    IFS="$saved_ifs"
+
+    [[ "$nullglob_was_set" == false ]] && shopt -u nullglob
+    [[ "$nocaseglob_was_set" == false ]] && shopt -u nocaseglob
+
+    [[ ${#matches[@]} -eq 0 ]] && return 0
+
+    local match
+    for match in "${matches[@]}"; do
+        [[ -d "$match" ]] && printf '%s\n' "$match"
+    done
+    return 0
+}
+
+# Expand every pattern in "$@" into ASIMOV_EXPANDED_DIRS (bash 3.2 has no
+# nameref, so the result is returned via a well-known global).
+expand_fixed_dirs() {
+    ASIMOV_EXPANDED_DIRS=()
+    local pattern path
+    for pattern in "$@"; do
+        while IFS= read -r path; do
+            [[ -n "$path" ]] && ASIMOV_EXPANDED_DIRS+=("$path")
+        done < <(expand_fixed_dir "$pattern")
+    done
+}
 
 # Record an excluded path: log for counting, compute size only with --stats.
 record_excluded_path() {
@@ -751,14 +926,16 @@ exclude_paths_from_stdin() {
     fi
     verbose_timing "Filtered: ${#to_exclude[@]} new, ${already_excluded} already excluded"
 
-    # Layer 2: Filter descendants of ASIMOV_FIXED_DIRS — they'll be excluded
+    # Layer 2: Filter descendants of the resolved fixed dirs — they'll be excluded
     # unconditionally later, so calling tmutil on them individually is wasted (~11s each).
-    if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" && ${#to_exclude[@]} -gt 0 ]]; then
+    # This must use the *expanded* list: a prefix compare against an unexpanded
+    # glob pattern would never match.
+    if [[ ${#ASIMOV_ALL_FIXED_DIRS[@]} -gt 0 && ${#to_exclude[@]} -gt 0 ]]; then
         local -a filtered_exclude=()
         for path in "${to_exclude[@]}"; do
             local under_fixed=false
             local fixed_dir
-            for fixed_dir in "${ASIMOV_FIXED_DIRS[@]}"; do
+            for fixed_dir in "${ASIMOV_ALL_FIXED_DIRS[@]}"; do
                 if [[ "$path" == "${fixed_dir}/"* ]]; then
                     under_fixed=true
                     break
@@ -975,6 +1152,100 @@ if [[ ! -d "$ASIMOV_ROOT" ]]; then
     exit 1
 fi
 
+# Decide whether application caches are excluded by default.
+#
+# New installs get them; anyone who already ran an earlier Asimov keeps the old
+# behaviour, so an upgrade never silently changes what gets excluded. The verdict
+# is written to ASIMOV_PROFILE_STATE on first run and honoured from then on, so
+# clearing the cache later can't flip it.
+#
+# Caveat: someone who only ever runs `asimov --no-cache` leaves no state at all
+# and is therefore indistinguishable from a new install.
+resolve_app_caches_default() {
+    if [[ -f "$ASIMOV_PROFILE_STATE" ]]; then
+        if grep -qx 'app_caches_default=false' "$ASIMOV_PROFILE_STATE" 2>/dev/null; then
+            echo false
+        else
+            echo true
+        fi
+        return 0
+    fi
+
+    if [[ "$ASIMOV_HAD_PRIOR_STATE" == true ]]; then
+        echo false
+    else
+        echo true
+    fi
+}
+
+# Persist the default so it survives a cache wipe. Skipped when the run is meant
+# to leave no trace (--dry-run, --no-write-cache).
+record_app_caches_default() {
+    local value="$1"
+    [[ -n "$ASIMOV_DRY_RUN" || -n "$ASIMOV_NO_WRITE_CACHE" ]] && return 0
+    [[ -f "$ASIMOV_PROFILE_STATE" ]] && return 0
+
+    local state_dir="${ASIMOV_PROFILE_STATE%/*}"
+    mkdir -p "$state_dir" 2>/dev/null || return 0
+    printf 'app_caches_default=%s\n' "$value" > "$ASIMOV_PROFILE_STATE" 2>/dev/null || return 0
+
+    # Match ensure_cache_dir: when running as root, leave the file owned by the
+    # console user so their next unprivileged run can still read it.
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        local console_user
+        console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo '')"
+        if [[ -n "$console_user" && "$console_user" != "root" ]]; then
+            chown -R "$console_user" "$state_dir" 2>/dev/null || true
+        fi
+    fi
+}
+
+app_caches_default="$(resolve_app_caches_default)"
+record_app_caches_default "$app_caches_default"
+
+# An explicit [app_caches] enabled always wins over the install profile.
+if [[ -n "$ASIMOV_CONFIG_APP_CACHES_ENABLED" ]]; then
+    ASIMOV_APP_CACHES_ENABLED="$ASIMOV_CONFIG_APP_CACHES_ENABLED"
+else
+    ASIMOV_APP_CACHES_ENABLED="$app_caches_default"
+fi
+readonly ASIMOV_APP_CACHES_ENABLED
+verbose_timing "App caches enabled: ${ASIMOV_APP_CACHES_ENABLED} (default ${app_caches_default})"
+
+# Expand every fixed-dir pattern up front. Done before find, because
+# exclude_paths_from_stdin's layer-2 filter compares candidate paths against these
+# and needs real directories rather than patterns.
+ASIMOV_EXPANDED_DIRS=()
+ASIMOV_BUILTIN_FIXED_DIRS=()
+ASIMOV_RESOLVED_APP_CACHE_DIRS=()
+ASIMOV_RESOLVED_EXTRA_DIRS=()
+
+if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" ]]; then
+    expand_fixed_dirs "${ASIMOV_FIXED_DIRS[@]}"
+    ASIMOV_BUILTIN_FIXED_DIRS=(${ASIMOV_EXPANDED_DIRS[@]+"${ASIMOV_EXPANDED_DIRS[@]}"})
+fi
+if [[ "$ASIMOV_APP_CACHES_ENABLED" == "true" ]]; then
+    expand_fixed_dirs "${ASIMOV_APP_CACHE_DIRS[@]}"
+    ASIMOV_RESOLVED_APP_CACHE_DIRS=(${ASIMOV_EXPANDED_DIRS[@]+"${ASIMOV_EXPANDED_DIRS[@]}"})
+fi
+if [[ ${#ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]} -gt 0 ]]; then
+    expand_fixed_dirs "${ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]}"
+    ASIMOV_RESOLVED_EXTRA_DIRS=(${ASIMOV_EXPANDED_DIRS[@]+"${ASIMOV_EXPANDED_DIRS[@]}"})
+fi
+
+# Combined view used by the layer-2 descendant filter.
+#
+# App-cache dirs are deliberately left out. That filter only ever sees candidates
+# produced by find or mdfind, and both skip ~/Library (ASIMOV_SKIP_PATHS), so an
+# app-cache dir can never be one of their ancestors. Including them would add a
+# few hundred no-hope string compares per candidate path.
+ASIMOV_ALL_FIXED_DIRS=(
+    ${ASIMOV_BUILTIN_FIXED_DIRS[@]+"${ASIMOV_BUILTIN_FIXED_DIRS[@]}"}
+    ${ASIMOV_RESOLVED_EXTRA_DIRS[@]+"${ASIMOV_RESOLVED_EXTRA_DIRS[@]}"}
+)
+readonly -a ASIMOV_ALL_FIXED_DIRS
+verbose_timing "Fixed dirs resolved: ${#ASIMOV_ALL_FIXED_DIRS[@]} directories"
+
 # Determine whether to use the cache or do a full scan.
 # Cache is read when the cache file exists and reads aren't disabled
 # (--no-read-cache / --full-scan / --no-cache force a full scan).
@@ -1051,25 +1322,28 @@ else
 fi
 
 # Exclude built-in fixed dirs only when enabled via config.
-if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" ]]; then
+if [[ ${#ASIMOV_BUILTIN_FIXED_DIRS[@]} -gt 0 ]]; then
     [[ -z "$ASIMOV_QUIET" ]] && printf '\n%s💾 Excluding known cache directories…%s\n' \
         "$ASIMOV_COLOR_INFO" "$ASIMOV_COLOR_RESET"
-    for fixed_dir in "${ASIMOV_FIXED_DIRS[@]}"; do
-        if [[ -d "$fixed_dir" ]]; then
-            echo "$fixed_dir"
-        fi
-    done | exclude_paths_from_stdin
+    printf '%s\n' "${ASIMOV_BUILTIN_FIXED_DIRS[@]}" | exclude_paths_from_stdin
+fi
+
+# Exclude non-developer application caches (default on for new installs).
+# Patterns at several depths can match a directory and something inside it
+# (e.g. */Cache and */*/Cache), so drop nested paths first: a Time Machine
+# exclusion is recursive, and each redundant tmutil call costs ~11s.
+if [[ ${#ASIMOV_RESOLVED_APP_CACHE_DIRS[@]} -gt 0 ]]; then
+    [[ -z "$ASIMOV_QUIET" ]] && printf '\n%s🧹 Excluding application caches…%s\n' \
+        "$ASIMOV_COLOR_INFO" "$ASIMOV_COLOR_RESET"
+    printf '%s\n' "${ASIMOV_RESOLVED_APP_CACHE_DIRS[@]}" \
+        | sort -u | dedup_nested_paths | exclude_paths_from_stdin
 fi
 
 # Always process extra fixed dirs from config (user explicitly wants them).
-if [[ ${#ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]} -gt 0 ]]; then
+if [[ ${#ASIMOV_RESOLVED_EXTRA_DIRS[@]} -gt 0 ]]; then
     [[ -z "$ASIMOV_QUIET" ]] && printf '\n%s⚙️  Excluding user-configured directories…%s\n' \
         "$ASIMOV_COLOR_INFO" "$ASIMOV_COLOR_RESET"
-    for fixed_dir in "${ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]}"; do
-        if [[ -d "$fixed_dir" ]]; then
-            echo "$fixed_dir"
-        fi
-    done | exclude_paths_from_stdin
+    printf '%s\n' "${ASIMOV_RESOLVED_EXTRA_DIRS[@]}" | exclude_paths_from_stdin
 fi
 
 verbose_timing "All exclusions processed"
