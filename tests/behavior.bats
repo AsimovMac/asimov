@@ -898,3 +898,125 @@ enabled = false"
   run_asimov --full-scan
   refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
 }
+
+# =============================================================================
+# Application caches: depth, case, and named cache types
+# =============================================================================
+
+@test "app caches: matches a named cache three levels below Application Support" {
+  # Notion, Figma and Cursor nest caches under a Partitions/profile directory.
+  create_app_support_dir "Notion/Partitions/notion/Cache"
+  create_app_support_dir "Figma/DesktopProfile/v20/Code Cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Notion/Partitions/notion/Cache"
+  assert_excluded "${HOME}/Library/Application Support/Figma/DesktopProfile/v20/Code Cache"
+}
+
+@test "app caches: matches a lowercase cache directory" {
+  # Zed ships node/cache; most apps ship Cache. Only nocaseglob catches both on a
+  # case-sensitive volume.
+  create_app_support_dir "Zed/node/cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Zed/node/cache"
+}
+
+@test "app caches: matches all four Chromium shader caches" {
+  create_app_support_dir "Chromium/GraphiteDawnCache"
+  create_app_support_dir "Chromium/GrShaderCache"
+  create_app_support_dir "Chromium/ShaderCache"
+  create_app_support_dir "Chromium/DawnWebGPUCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Chromium/GraphiteDawnCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/GrShaderCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/ShaderCache"
+  assert_excluded "${HOME}/Library/Application Support/Chromium/DawnWebGPUCache"
+}
+
+@test "app caches: matches on-device model stores for any Chromium browser" {
+  create_app_support_dir "Microsoft Edge/OptGuideOnDeviceModel"
+  create_app_support_dir "BraveSoftware/Brave-Browser/optimization_guide_model_store"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Microsoft Edge/OptGuideOnDeviceModel"
+  assert_excluded "${HOME}/Library/Application Support/BraveSoftware/Brave-Browser/optimization_guide_model_store"
+}
+
+@test "app caches: matches the service-worker cache inside VS Code-family editors" {
+  create_app_support_dir "Cursor/WebStorage/1/CacheStorage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Cursor/WebStorage/1/CacheStorage"
+}
+
+@test "app caches: leaves the WebStorage parent alone" {
+  # WebStorage itself holds localStorage; only its CacheStorage child is cache.
+  create_app_support_dir "Cursor/WebStorage/1/CacheStorage"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Cursor/WebStorage"
+  refute_excluded "${HOME}/Library/Application Support/Cursor/WebStorage/1"
+}
+
+@test "app caches: matches crash dumps and transient blob spools" {
+  create_app_support_dir "Lens/Crashpad"
+  create_app_support_dir "Messenger/crashpad"
+  create_app_support_dir "Firefox/Crash Reports"
+  create_app_support_dir "Slack/blob_storage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Lens/Crashpad"
+  assert_excluded "${HOME}/Library/Application Support/Messenger/crashpad"
+  assert_excluded "${HOME}/Library/Application Support/Firefox/Crash Reports"
+  assert_excluded "${HOME}/Library/Application Support/Slack/blob_storage"
+}
+
+@test "app caches: matches downloadable modules and blocklists" {
+  create_app_support_dir "Vivaldi/WidevineCdm"
+  create_app_support_dir "Google/Chrome/Safe Browsing"
+  create_app_support_dir "Signal/update-cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Vivaldi/WidevineCdm"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Safe Browsing"
+  assert_excluded "${HOME}/Library/Application Support/Signal/update-cache"
+}
+
+@test "app caches: matches a literal Caches directory" {
+  create_app_support_dir "Caches"
+  create_app_support_dir "SomeApp/Caches"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Caches"
+  assert_excluded "${HOME}/Library/Application Support/SomeApp/Caches"
+}
+
+@test "app caches: matches the vendor-specific caches" {
+  create_app_support_dir "Google/GoogleUpdater/crx_cache"
+  create_app_support_dir "Google/DriveFS/cef_cache"
+  create_app_support_dir "Notion/notionAssetCache-v2"
+  create_app_support_dir "Steam/appcache"
+  create_app_support_dir "Steam/config/htmlcache"
+  create_app_support_dir "Setapp/Default/SetappIcons/com.onevcat.Kingfisher.ImageCache.setapp"
+  create_app_support_dir "SketchUp 2026/WebCache-137.0.7151.121"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Google/GoogleUpdater/crx_cache"
+  assert_excluded "${HOME}/Library/Application Support/Google/DriveFS/cef_cache"
+  assert_excluded "${HOME}/Library/Application Support/Notion/notionAssetCache-v2"
+  assert_excluded "${HOME}/Library/Application Support/Steam/appcache"
+  assert_excluded "${HOME}/Library/Application Support/Steam/config/htmlcache"
+  assert_excluded "${HOME}/Library/Application Support/Setapp/Default/SetappIcons/com.onevcat.Kingfisher.ImageCache.setapp"
+  assert_excluded "${HOME}/Library/Application Support/SketchUp 2026/WebCache-137.0.7151.121"
+}
+
+@test "app caches: a nested match is excluded only once, via its ancestor" {
+  # */Cache and */*/Cache can both match when one nests inside the other.
+  # Time Machine exclusions are recursive, so only the ancestor is worth a call.
+  create_app_support_dir "App/Cache/inner/Cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/App/Cache"
+  refute_excluded "${HOME}/Library/Application Support/App/Cache/inner/Cache"
+  [[ "$(count_exclusions)" -eq 1 ]]
+}
+
+@test "app caches: nothing outside Application Support is touched" {
+  # Deliberately scoped: ~/Library/Unity/cache and ~/Library/Mail caches are not ours.
+  mkdir -p "${HOME}/Library/Unity/cache"
+  mkdir -p "${HOME}/Library/Mail/V10/MailData/RemoteContentURLCache"
+  run_asimov
+  refute_excluded "${HOME}/Library/Unity/cache"
+  refute_excluded "${HOME}/Library/Mail/V10/MailData/RemoteContentURLCache"
+}

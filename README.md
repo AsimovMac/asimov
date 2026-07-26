@@ -183,11 +183,11 @@ extra   = ~/builds/*/dist        # globs work, including in paths containing spa
 
 ### Application caches
 
-macOS already keeps `~/Library/Caches` out of Time Machine — but Electron and Chromium apps
+macOS already keeps `~/Library/Caches` out of Time Machine, but Electron and Chromium apps
 store their caches in `~/Library/Application Support`, which *is* backed up. Asimov excludes
-those too: Spotify's offline audio, Chrome's on-device model store, and the
-`Cache` / `Code Cache` / `GPUCache` / `CachedExtensionVSIXs` directories that every
-Electron app leaves behind. On one everyday Mac this came to 14 GB.
+those too: Spotify's offline audio, browser on-device model stores, shader caches, crash
+dumps, and the `Cache` / `Code Cache` / `GPUCache` / `CachedExtensionVSIXs` directories that
+every Electron app leaves behind. On one everyday Mac this came to 18 GB across 361 directories.
 
 This is **on by default for new installs only**. If you were already running Asimov before
 this landed, nothing changes until you ask for it:
