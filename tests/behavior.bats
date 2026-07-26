@@ -946,3 +946,24 @@ enabled = false"
   refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker/CacheStorage"
   refute_excluded "${HOME}/Library/Application Support/Claude/vm_bundles"
 }
+
+@test "fixed dirs: glob expansion works under bash 3.2 (the system bash)" {
+  # asimov ships with #!/usr/bin/env bash, so on a stock Mac it runs under bash
+  # 3.2. bash 3.2 joins the elements of an unquoted array expansion while IFS is
+  # empty, which silently reduced every multi-match glob to nothing. The local
+  # suite runs under whatever bash is first on PATH, so this asserts 3.2 directly.
+  [[ -x /bin/bash ]] || skip "no /bin/bash available"
+  mkdir -p "${HOME}/builds/alpha/dist" "${HOME}/builds/beta/dist" "${HOME}/app/Code Cache"
+
+  run /bin/bash -c '
+    set -Eeu -o pipefail
+    eval "$(awk "/^expand_fixed_dir\(\)/,/^}/" "$1")"
+    expand_fixed_dir "$2/builds/*/dist"
+    expand_fixed_dir "$2/*/Code Cache"
+  ' _ "${BATS_TEST_DIRNAME}/../asimov" "$HOME"
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"${HOME}/builds/alpha/dist"* ]]
+  [[ "$output" == *"${HOME}/builds/beta/dist"* ]]
+  [[ "$output" == *"${HOME}/app/Code Cache"* ]]
+}
