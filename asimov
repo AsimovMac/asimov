@@ -29,6 +29,43 @@ trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP"
 # Keep ASIMOV_VERSION in sync with CHANGELOG and package managers (e.g. Homebrew).
 readonly ASIMOV_VERSION='0.10.0'
 
+# --- Message styling ---
+# Progress/summary styling for stdout; disabled when stdout is not a terminal
+# (e.g. launchd, pipes, redirects).
+if [[ -t 1 ]]; then
+    readonly ASIMOV_COLOR_INFO=$'\033[0;36m'
+    readonly ASIMOV_COLOR_SUCCESS=$'\033[0;32m'
+    readonly ASIMOV_COLOR_RESET=$'\033[0m'
+else
+    readonly ASIMOV_COLOR_INFO=''
+    readonly ASIMOV_COLOR_SUCCESS=''
+    readonly ASIMOV_COLOR_RESET=''
+fi
+
+# Diagnostics all go to stderr, which is redirected independently of stdout —
+# so it gets its own colors, gated on its own terminal check.
+if [[ -t 2 ]]; then
+    readonly ASIMOV_ERR_ERROR=$'\033[0;31m'
+    readonly ASIMOV_ERR_WARN=$'\033[0;33m'
+    readonly ASIMOV_ERR_DIM=$'\033[0;90m'
+    readonly ASIMOV_ERR_RESET=$'\033[0m'
+else
+    readonly ASIMOV_ERR_ERROR=''
+    readonly ASIMOV_ERR_WARN=''
+    readonly ASIMOV_ERR_DIM=''
+    readonly ASIMOV_ERR_RESET=''
+fi
+
+# Red error line on stderr. Usage: msg_error "unknown option '--foo'"
+msg_error() {
+    printf '%s✗ asimov: %s%s\n' "$ASIMOV_ERR_ERROR" "$*" "$ASIMOV_ERR_RESET" >&2
+}
+
+# Yellow warning line on stderr. Shown even under --quiet: it is not routine output.
+msg_warn() {
+    printf '%s⚠ asimov: %s%s\n' "$ASIMOV_ERR_WARN" "$*" "$ASIMOV_ERR_RESET" >&2
+}
+
 print_usage() {
     printf 'Usage: asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [directory]\n'
     printf '\n'
@@ -80,7 +117,7 @@ for arg in "$@"; do
         --help)       print_usage; exit 0 ;;
         --version)    printf '%s\n' "$ASIMOV_VERSION"; exit 0 ;;
         -*)
-            echo "asimov: unknown option '$arg'" >&2
+            msg_error "unknown option '$arg'"
             print_usage >&2
             exit 1
             ;;
@@ -97,7 +134,7 @@ readonly ASIMOV_NO_READ_CACHE
 readonly ASIMOV_NO_WRITE_CACHE
 
 if [[ -n "$ASIMOV_QUIET" && -n "$ASIMOV_VERBOSE" ]]; then
-    echo "asimov: --quiet and --verbose are mutually exclusive" >&2
+    msg_error "--quiet and --verbose are mutually exclusive"
     exit 1
 fi
 
@@ -105,26 +142,13 @@ fi
 readonly ASIMOV_KB_PER_MB=1024
 readonly ASIMOV_KB_PER_GB=1048576
 
-# Disable colors when stdout is not a terminal (e.g. launchd, pipes, redirects).
-if [[ -t 1 ]]; then
-    readonly ASIMOV_COLOR_INFO=$'\033[0;36m'
-    readonly ASIMOV_COLOR_SUCCESS=$'\033[0;32m'
-    readonly ASIMOV_COLOR_DIM=$'\033[0;90m'
-    readonly ASIMOV_COLOR_RESET=$'\033[0m'
-else
-    readonly ASIMOV_COLOR_INFO=''
-    readonly ASIMOV_COLOR_SUCCESS=''
-    readonly ASIMOV_COLOR_DIM=''
-    readonly ASIMOV_COLOR_RESET=''
-fi
-
 # Print a dim timestamped debug line when --verbose is set.
 # Uses bash's built-in $SECONDS variable (auto-increments from 0 at script start).
 # Output goes to stderr so it stays visible even when stdout is redirected
 # (e.g. inside discover_new_paths_via_mdfind whose stdout is captured to a file).
 verbose_timing() {
     [[ -n "$ASIMOV_VERBOSE" ]] || return 0
-    printf '%s  [%ds] %s%s\n' "$ASIMOV_COLOR_DIM" "$SECONDS" "$1" "$ASIMOV_COLOR_RESET" >&2
+    printf '%s  [%ds] %s%s\n' "$ASIMOV_ERR_DIM" "$SECONDS" "$1" "$ASIMOV_ERR_RESET" >&2
 }
 
 # Resolve the root directory to scan (console user's home when running as root).
@@ -215,7 +239,7 @@ load_config
 ASIMOV_SCAN_DIRS=()
 if [[ -n "$ASIMOV_SCAN_DIR" ]]; then
     if [[ ! -d "$ASIMOV_SCAN_DIR" ]]; then
-        echo "asimov: not a directory: ${ASIMOV_SCAN_DIR}" >&2
+        msg_error "not a directory: ${ASIMOV_SCAN_DIR}"
         exit 1
     fi
     ASIMOV_SCAN_DIRS=("$ASIMOV_SCAN_DIR")
@@ -224,7 +248,7 @@ else
     for scan_dir in ${ASIMOV_CONFIG_SCAN_DIRS[@]+"${ASIMOV_CONFIG_SCAN_DIRS[@]}"}; do
         if [[ ! -d "$scan_dir" ]]; then
             [[ -z "$ASIMOV_QUIET" ]] && \
-                echo "asimov: configured scan directory does not exist, skipping: ${scan_dir}" >&2
+                msg_warn "configured scan directory does not exist — skipping: ${scan_dir}"
             continue
         fi
         ASIMOV_SCAN_DIRS+=("$scan_dir")
@@ -814,13 +838,13 @@ exclude_paths_from_stdin() {
         # "Error (-20)" / EINVAL. The common case is Go's module cache, which is
         # deliberately 0555. Check first: addexclusion costs ~11s even when it fails.
         if [[ ! -w "$path" ]]; then
-            echo "! ${path}: read-only, cannot be excluded — skipping." >&2
+            msg_warn "${path}: read-only, cannot be excluded — skipping."
             [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
             continue
         fi
         # tmutil prints its POSIXError dump to stdout, not stderr — silence both.
         if ! tmutil addexclusion "${path}" >/dev/null 2>&1; then
-            echo "! ${path}: failed to exclude (tmutil error), skipping." >&2
+            msg_warn "${path}: failed to exclude (tmutil error) — skipping."
             # Persist failure so we skip this path on subsequent runs.
             # Use --no-read-cache to retry.
             [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
@@ -971,7 +995,7 @@ print_exclusion_summary() {
 # --- Main: build find params, run find (or use cache), process paths, then fixed dirs, then summary ---
 
 if [[ ! -d "$ASIMOV_ROOT" ]]; then
-    echo "asimov: root directory does not exist or is not a directory: $ASIMOV_ROOT" >&2
+    msg_error "root directory does not exist or is not a directory: $ASIMOV_ROOT"
     exit 1
 fi
 

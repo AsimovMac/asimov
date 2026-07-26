@@ -19,6 +19,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   5.x), with ShellCheck split into its own job so it runs once instead of once per cell.
   All jobs run in parallel, `fail-fast` is off so one failing combination cannot hide the
   others, and a newer push cancels an in-flight run for the same ref.
+- Errors and warnings are now styled consistently: red `✗` for errors, yellow `⚠` for warnings, with dim indented hint lines. Colors on stderr are enabled based on stderr's own terminal check, so a redirected stdout no longer strips (or leaks) codes on diagnostics
 
 ### Fixed
 
