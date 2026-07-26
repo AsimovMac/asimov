@@ -90,9 +90,29 @@ type(scope): short description
 - `test: add coverage for Go modules`
 - `docs: update installation instructions`
 
+## Worktrees
+
+Work on a **git worktree**, not on a checked-out `main`. Each worktree is its own directory with its own branch, so a long-running change never blocks a quick fix, and `main` stays clean for releases.
+
+```sh
+git worktree add ../asimov-<topic> -b <type>/<topic>   # new branch in a sibling directory
+cd ../asimov-<topic>
+make check
+```
+
+When the PR is merged, remove it:
+
+```sh
+git worktree remove ../asimov-<topic>
+git worktree prune
+git branch -d <type>/<topic>
+```
+
+`git worktree list` shows what you have open. Note that each worktree gets a fresh, untracked state — install test dependencies once (they're global via Homebrew) and re-run `make check` inside the worktree.
+
 ## Pull requests
 
-- Branch from `main` (the default branch).
+- Branch from `main` (the default branch) — see [Worktrees](#worktrees) above.
 - Keep PRs focused — one feature or fix per PR.
 - Ensure `make check` passes before submitting.
 - Update `CHANGELOG.md` for user-facing changes.
