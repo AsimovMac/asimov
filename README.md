@@ -22,7 +22,7 @@ brew install asimov
 brew services start asimov
 ```
 
-> **Updating to v0.10.0:** the homebrew-core formula is being bumped from `0.3.0` → `0.10.0` ([tracking PR](https://github.com/Homebrew/homebrew-core/pulls?q=asimov)). Until it merges, `brew install asimov` still installs `0.3.0` — use the curl installer below for `0.10.0` today.
+> **Updating to v0.10.0:** the homebrew-core formula is being bumped to `0.10.0` ([tracking PR](https://github.com/Homebrew/homebrew-core/pulls?q=asimov)). Until it merges, `brew install asimov` installs the previous version — use the curl installer below for `0.10.0` today.
 
 ### curl (latest, no Homebrew)
 
