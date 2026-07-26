@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help test lint check bench bench-home install uninstall exclusions version prep-release release release-beta verify-release
+.PHONY: help test test-system-bash lint check bench bench-home install uninstall exclusions version prep-release release release-beta verify-release
 
 # Which GitHub repo + git remote releases target. Defaults to the project's home
 # (AsimovMac/asimov). Pinning GH_REPO to $(REPO) stops another configured remote
@@ -23,11 +23,22 @@ exclusions: ## List all paths excluded from Time Machine
 ## —————————— 🛠 Development ———————————————————————————————————
 
 
-test: ## Run Bats tests
-	@bats tests/sentinels.bats tests/behavior.bats tests/cache.bats tests/format.bats tests/plist.bats
+# Pin the bash that runs asimov itself. Its shebang is #!/usr/bin/env bash, so
+# by default it runs under whichever bash is first on PATH — usually 5.x locally
+# and 3.2 for anyone on a stock Mac. Use `make test BASH_BIN=/bin/bash` to check
+# what your users actually get; CI runs the matrix for you.
+BASH_BIN ?=
+# Run tests concurrently (requires GNU parallel: brew install parallel).
+BATS_JOBS ?=
+
+test: ## Run Bats tests (BASH_BIN=/bin/bash pins the interpreter; BATS_JOBS=N runs in parallel)
+	@BASH_BIN="$(BASH_BIN)" BATS_JOBS="$(BATS_JOBS)" scripts/test.sh
+
+test-system-bash: ## Run Bats tests under the macOS system bash (3.2), as shipped users get
+	@$(MAKE) --no-print-directory test BASH_BIN=/bin/bash
 
 lint: ## Run Shellcheck on all shell scripts
-	@shellcheck asimov scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind
+	@shellcheck asimov scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh scripts/test.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind
 
 check: test lint ## Run tests and linting
 

@@ -5,19 +5,69 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Shellcheck is interpreter-independent, so it runs once rather than once per
+  # matrix cell, in parallel with the test jobs.
+  lint:
+    name: shellcheck
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: brew list shellcheck >/dev/null 2>&1 || brew install shellcheck
+
+      - name: Run shellcheck
+        run: make lint
+
+  # asimov ships with #!/usr/bin/env bash, so the bash it runs under is whatever
+  # the user happens to have first on PATH. On macOS that is one of exactly two
+  # things: the system bash at /bin/bash, still 3.2 because Apple froze it at the
+  # last GPLv2 release, or a modern 5.x from Homebrew. The two disagree on array
+  # and IFS semantics, so both are tested.
+  #
+  # Every cell runs concurrently, and fail-fast is off so one failing combination
+  # cannot hide the others.
   test:
+    name: ${{ matrix.os }} / bash ${{ matrix.bash }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-14, macos-15]
+        bash: [system, homebrew]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: brew install bats-core shellcheck
+      - name: Install test dependencies
+        run: |
+          brew list bats-core >/dev/null 2>&1 || brew install bats-core
+          brew list parallel  >/dev/null 2>&1 || brew install parallel
+          if [ "${{ matrix.bash }}" = "homebrew" ]; then
+            brew list bash >/dev/null 2>&1 || brew install bash
+          fi
+          # Stop GNU parallel asking to be cited, which it does on stderr on
+          # first use and which has no non-interactive answer.
+          mkdir -p "${HOME}/.parallel" && touch "${HOME}/.parallel/will-cite"
 
-      - name: Run tests and linting
-        run: make check
+      - name: Select bash
+        id: select
+        run: |
+          if [ "${{ matrix.bash }}" = "system" ]; then
+            bin=/bin/bash
+          else
+            bin="$(brew --prefix)/bin/bash"
+          fi
+          echo "bin=${bin}" >> "$GITHUB_OUTPUT"
+          "$bin" --version | head -1
+
+      # BATS_JOBS runs the suite concurrently. Each test gets its own temp HOME in
+      # setup(), so there is no shared state between them.
+      - name: Run tests
+        run: make test BASH_BIN='${{ steps.select.outputs.bin }}' BATS_JOBS=4

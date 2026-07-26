@@ -163,7 +163,7 @@ extra = ~/.skipme"
 }
 
 @test "exits with error when root directory does not exist" {
-  run env HOME=/nonexistent-asimov-root "${BATS_TEST_DIRNAME}/../asimov"
+  run env HOME=/nonexistent-asimov-root "${ASIMOV_CMD[@]}"
   [[ "$status" -eq 1 ]]
   [[ "$output" == *"root directory"* ]]
   [[ "$output" == *"does not exist"* ]]
