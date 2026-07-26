@@ -144,6 +144,35 @@ asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write
 | `--no-read-cache`   | Ignore cached state; re-discover and re-verify everything, then rebuild the cache |
 | `--no-write-cache`  | Run normally but don't persist any cache updates                 |
 
+### `asimov prune`
+
+Reports Time Machine exclusions that point at a directory which no longer exists, and compacts Asimov's own cache.
+
+```
+$ asimov prune
+
+Stale Time Machine exclusions (1):
+  ~/Downloads/old-client  path no longer exists
+
+These are sticky exclusions (tmutil addexclusion -p), which Asimov never sets.
+They persist after the directory is deleted. To remove one:
+
+  sudo tmutil removeexclusion -p ~/Downloads/old-client
+
+Asimov cache: 3 stale entries dropped.
+```
+
+`prune` is **read-only** with respect to Time Machine — it prints the removal command rather than running it, since these entries are system-wide and Asimov didn't create them. The only file it writes is its own cache.
+
+Worth knowing why the distinction exists: Time Machine has two kinds of exclusion.
+
+| | Where it's stored | Survives deleting the directory? |
+| --- | --- | --- |
+| `tmutil addexclusion PATH` — what Asimov uses | An attribute on the directory itself | **No** — removed with it |
+| `tmutil addexclusion -p PATH` — "sticky" | Time Machine's system preferences | **Yes** — forever |
+
+So Asimov's own exclusions clean themselves up. Only sticky entries, set by other tools or by hand, can outlive their directory — and nothing else surfaces them.
+
 Asimov keeps a cache under `~/.cache/asimov/` so repeat runs are near-instant. The two flags above control it on independent axes — reading and writing:
 
 - `--no-read-cache` — *"rebuild."* Ignores everything cached, re-scans the filesystem, and re-verifies every directory against Time Machine, then writes a fresh cache. **`--full-scan` is an alias.**

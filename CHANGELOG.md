@@ -13,6 +13,13 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
   `make test BATS_JOBS=N` runs tests concurrently (needs GNU parallel).
+- `asimov prune` reports Time Machine exclusions whose directory no longer exists, and
+  compacts Asimov's own path cache. It is read-only with respect to Time Machine: stale
+  entries live in the system-wide "sticky" list (`tmutil addexclusion -p`), which Asimov
+  never writes, so `prune` prints the `sudo tmutil removeexclusion -p` command rather than
+  running it. Asimov's own exclusions are stored as an attribute on the directory itself
+  and are therefore removed automatically when the directory is deleted — only sticky
+  entries can outlive their directory ([#38](https://github.com/AsimovMac/asimov/issues/38)).
 - README: a "What Asimov doesn't do" section, covering the three things Asimov is most
   often expected to do and doesn't — hide directories from Spotlight (a separate mechanism
   from Time Machine exclusions), shrink backups that already exist, and delete anything —

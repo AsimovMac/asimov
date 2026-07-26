@@ -744,3 +744,91 @@ extra = ${HOME}/Code"
   [[ "$(count_exclusions)" -eq 1 ]]
   refute_excluded "${HOME}/Projects/app/node_modules"
 }
+
+# --- prune ---
+
+@test "prune reports a sticky exclusion whose directory no longer exists" {
+  mkdir -p "${HOME}/Keep"
+  write_sticky_exclusions "${HOME}/Keep" "${HOME}/Deleted"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Stale Time Machine exclusions (1)"* ]]
+  [[ "$output" == *"${HOME}/Deleted"* ]]
+  [[ "$output" != *"${HOME}/Keep "* ]]
+}
+
+@test "prune prints the removal command rather than running it" {
+  write_sticky_exclusions "${HOME}/Deleted"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"sudo tmutil removeexclusion -p ${HOME}/Deleted"* ]]
+  # Read-only: the mock tmutil database is untouched.
+  [[ "$(count_exclusions)" -eq 0 ]]
+}
+
+@test "prune reports a clean bill of health when every sticky entry exists" {
+  mkdir -p "${HOME}/Keep"
+  write_sticky_exclusions "${HOME}/Keep"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"No stale exclusions"* ]]
+  [[ "$output" == *"1 sticky entries"* ]]
+}
+
+@test "prune handles a Mac with no sticky exclusions at all" {
+  export ASIMOV_TM_PLIST="${TEST_TEMP_DIR}/missing.plist"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"No sticky Time Machine exclusions"* ]]
+}
+
+@test "prune drops cache entries whose directory is gone and keeps the rest" {
+  mkdir -p "${HOME}/Projects/app/node_modules"
+  write_path_cache "${HOME}/Projects/app/node_modules" "${HOME}/Projects/gone/node_modules"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Asimov cache: 1 stale entry dropped."* ]]
+  assert_cached "${HOME}/Projects/app/node_modules"
+  refute_cached "${HOME}/Projects/gone/node_modules"
+}
+
+@test "prune says so when the cache has nothing to drop" {
+  mkdir -p "${HOME}/Projects/app/node_modules"
+  write_path_cache "${HOME}/Projects/app/node_modules"
+
+  run_asimov prune
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Asimov cache: nothing to prune."* ]]
+}
+
+@test "prune --quiet prints nothing but still compacts the cache" {
+  write_sticky_exclusions "${HOME}/Deleted"
+  mkdir -p "${HOME}/Projects/app/node_modules"
+  write_path_cache "${HOME}/Projects/app/node_modules" "${HOME}/Projects/gone/node_modules"
+
+  run_asimov prune --quiet
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
+  refute_cached "${HOME}/Projects/gone/node_modules"
+  assert_cached "${HOME}/Projects/app/node_modules"
+}
+
+@test "prune is listed in the help output" {
+  run_asimov --help
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"asimov prune"* ]]
+}
+
+@test "a directory named prune is still scannable as a path" {
+  mkdir -p "${HOME}/prune/app/node_modules"
+  echo "sentinel" > "${HOME}/prune/app/package.json"
+
+  run_asimov --dry-run "${HOME}/prune"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Would exclude: ${HOME}/prune/app/node_modules"* ]]
+}
