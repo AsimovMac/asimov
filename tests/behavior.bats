@@ -734,3 +734,236 @@ extra = ${HOME}/Code"
   [[ "$(count_exclusions)" -eq 1 ]]
   refute_excluded "${HOME}/Projects/app/node_modules"
 }
+
+# =============================================================================
+# Glob support in fixed directories
+# =============================================================================
+
+@test "fixed dirs: extra path expands a glob" {
+  mkdir -p "${HOME}/builds/alpha/dist"
+  mkdir -p "${HOME}/builds/beta/dist"
+  write_config "[fixed_dirs]
+extra = ~/builds/*/dist"
+
+  run_asimov
+
+  assert_excluded "${HOME}/builds/alpha/dist"
+  assert_excluded "${HOME}/builds/beta/dist"
+}
+
+@test "fixed dirs: glob expansion keeps paths containing spaces intact" {
+  mkdir -p "${HOME}/Application Support/My App/Code Cache"
+  write_config "[fixed_dirs]
+extra = ~/Application Support/*/Code Cache"
+
+  run_asimov
+
+  assert_excluded "${HOME}/Application Support/My App/Code Cache"
+}
+
+@test "fixed dirs: glob matching nothing is not an error" {
+  write_config "[fixed_dirs]
+extra = ~/nowhere/*/dist"
+
+  run_asimov
+
+  [[ "$status" -eq 0 ]]
+  [[ "$(count_exclusions)" -eq 0 ]]
+}
+
+@test "fixed dirs: glob only matches directories, not files" {
+  mkdir -p "${HOME}/builds/alpha"
+  touch "${HOME}/builds/alpha/dist"
+  write_config "[fixed_dirs]
+extra = ~/builds/*/dist"
+
+  run_asimov
+
+  [[ "$status" -eq 0 ]]
+  refute_excluded "${HOME}/builds/alpha/dist"
+}
+
+# =============================================================================
+# Application caches
+# =============================================================================
+
+# Create a directory under ~/Library/Application Support.
+create_app_support_dir() {
+  mkdir -p "${HOME}/Library/Application Support/$1"
+}
+
+# Simulate a machine that has already run an earlier version of Asimov.
+simulate_prior_install() {
+  mkdir -p "${HOME}/.cache/asimov"
+  echo "${HOME}/some/old/path" > "${HOME}/.cache/asimov/excluded"
+}
+
+@test "app caches: excluded by default on a new install" {
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: matches a named cache one level below Application Support" {
+  create_app_support_dir "discord/Cache"
+  create_app_support_dir "Code/CachedExtensionVSIXs"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/discord/Cache"
+  assert_excluded "${HOME}/Library/Application Support/Code/CachedExtensionVSIXs"
+}
+
+@test "app caches: matches a named cache two levels below Application Support" {
+  create_app_support_dir "Arc/User Data/Code Cache"
+  create_app_support_dir "Google/Chrome/component_crx_cache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Arc/User Data/Code Cache"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/component_crx_cache"
+}
+
+@test "app caches: leaves non-cache directories alone" {
+  create_app_support_dir "Code/User"
+  create_app_support_dir "Google/Chrome/Default"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Code/User"
+  refute_excluded "${HOME}/Library/Application Support/Google/Chrome/Default"
+}
+
+@test "app caches: not excluded when the machine has prior Asimov state" {
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: existing user can opt in explicitly" {
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  write_config "[app_caches]
+enabled = true"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: new install can opt out explicitly" {
+  create_app_support_dir "Spotify/PersistentCache"
+  write_config "[app_caches]
+enabled = false"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: first run records the resolved default" {
+  run_asimov
+  [[ -f "${HOME}/.local/state/asimov/profile" ]]
+  grep -qx 'app_caches_default=true' "${HOME}/.local/state/asimov/profile"
+}
+
+@test "app caches: an upgrader's recorded default is off" {
+  simulate_prior_install
+  run_asimov
+  grep -qx 'app_caches_default=false' "${HOME}/.local/state/asimov/profile"
+}
+
+@test "app caches: recorded default survives a cache wipe" {
+  # Existing user: default resolves to off and is recorded.
+  simulate_prior_install
+  run_asimov
+  grep -qx 'app_caches_default=false' "${HOME}/.local/state/asimov/profile"
+
+  # Wiping the cache would otherwise make them look like a new install.
+  rm -rf "${HOME}/.cache/asimov"
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov
+
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+@test "app caches: dry-run does not record a default" {
+  run_asimov --dry-run
+  [[ "$status" -eq 0 ]]
+  [[ ! -f "${HOME}/.local/state/asimov/profile" ]]
+}
+
+@test "app caches: --no-write-cache does not record a default" {
+  run_asimov --no-write-cache
+  [[ "$status" -eq 0 ]]
+  [[ ! -f "${HOME}/.local/state/asimov/profile" ]]
+}
+
+@test "app caches: a full scan by an existing user still counts as an upgrade" {
+  # --no-read-cache clears the state files, so the prior-install signal must be
+  # captured before that happens.
+  simulate_prior_install
+  create_app_support_dir "Spotify/PersistentCache"
+  run_asimov --full-scan
+  refute_excluded "${HOME}/Library/Application Support/Spotify/PersistentCache"
+}
+
+# =============================================================================
+# Application caches: service-worker caches
+# =============================================================================
+
+@test "app caches: excludes the service-worker CacheStorage" {
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Google/Chrome/Default/Service Worker/CacheStorage"
+  create_app_support_dir "Arc/User Data/Profile 3/Service Worker/CacheStorage"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Asana/Service Worker/CacheStorage"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Default/Service Worker/CacheStorage"
+  assert_excluded "${HOME}/Library/Application Support/Arc/User Data/Profile 3/Service Worker/CacheStorage"
+}
+
+@test "app caches: excludes the service-worker ScriptCache" {
+  create_app_support_dir "Asana/Service Worker/ScriptCache"
+  create_app_support_dir "Google/Chrome/Default/Service Worker/ScriptCache"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Asana/Service Worker/ScriptCache"
+  assert_excluded "${HOME}/Library/Application Support/Google/Chrome/Default/Service Worker/ScriptCache"
+}
+
+@test "app caches: leaves the service-worker registration database alone" {
+  # Database/ holds the registrations. Losing it logs you out of web apps and
+  # drops their offline mode, so only the cache siblings are excluded.
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Asana/Service Worker/Database"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker"
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker/Database"
+}
+
+@test "app caches: excludes Claude Desktop's sandbox images" {
+  create_app_support_dir "Claude/vm_bundles"
+  run_asimov
+  assert_excluded "${HOME}/Library/Application Support/Claude/vm_bundles"
+}
+
+@test "app caches: service-worker caches respect the opt-out" {
+  create_app_support_dir "Asana/Service Worker/CacheStorage"
+  create_app_support_dir "Claude/vm_bundles"
+  write_config "[app_caches]
+enabled = false"
+  run_asimov
+  refute_excluded "${HOME}/Library/Application Support/Asana/Service Worker/CacheStorage"
+  refute_excluded "${HOME}/Library/Application Support/Claude/vm_bundles"
+}
+
+@test "fixed dirs: glob expansion works under bash 3.2 (the system bash)" {
+  # asimov ships with #!/usr/bin/env bash, so on a stock Mac it runs under bash
+  # 3.2. bash 3.2 joins the elements of an unquoted array expansion while IFS is
+  # empty, which silently reduced every multi-match glob to nothing. The local
+  # suite runs under whatever bash is first on PATH, so this asserts 3.2 directly.
+  [[ -x /bin/bash ]] || skip "no /bin/bash available"
+  mkdir -p "${HOME}/builds/alpha/dist" "${HOME}/builds/beta/dist" "${HOME}/app/Code Cache"
+
+  run /bin/bash -c '
+    set -Eeu -o pipefail
+    eval "$(awk "/^expand_fixed_dir\(\)/,/^}/" "$1")"
+    expand_fixed_dir "$2/builds/*/dist"
+    expand_fixed_dir "$2/*/Code Cache"
+  ' _ "${BATS_TEST_DIRNAME}/../asimov" "$HOME"
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"${HOME}/builds/alpha/dist"* ]]
+  [[ "$output" == *"${HOME}/builds/beta/dist"* ]]
+  [[ "$output" == *"${HOME}/app/Code Cache"* ]]
+}

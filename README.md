@@ -178,6 +178,32 @@ Global tool caches in your home directory (`~/.cache`, `~/.gradle/caches`, …) 
 enabled = true                   # exclude the built-in global caches
 extra   = ~/my-build-cache       # plus any paths you name (always excluded when they exist)
 extra   = ~/golang/pkg/mod       # e.g. a Go module cache under a custom GOPATH
+extra   = ~/builds/*/dist        # globs work, including in paths containing spaces
+```
+
+### Application caches
+
+macOS already keeps `~/Library/Caches` out of Time Machine — but Electron and Chromium apps
+store their caches in `~/Library/Application Support`, which *is* backed up. Asimov excludes
+those too: Spotify's offline audio, Chrome's on-device model store, and the
+`Cache` / `Code Cache` / `GPUCache` / `CachedExtensionVSIXs` directories that every
+Electron app leaves behind, plus service-worker caches. On one everyday Mac this came to 27 GB.
+
+Service-worker caches are handled carefully: `CacheStorage` and `ScriptCache` are excluded
+because both refetch from origin, while the `Database` beside them, which holds the worker
+registrations, stays backed up. Losing that is what logs you out of a web app.
+
+This is **on by default for new installs only**. If you were already running Asimov before
+this landed, nothing changes until you ask for it:
+
+```ini
+[app_caches]
+enabled = true                   # existing users: opt in
+```
+
+```ini
+[app_caches]
+enabled = false                  # new installs: opt out
 ```
 
 ## Other install methods
