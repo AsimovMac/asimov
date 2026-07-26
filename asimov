@@ -823,16 +823,24 @@ expand_fixed_dir() {
     shopt -q nocaseglob && nocaseglob_was_set=true
     shopt -s nullglob nocaseglob
 
+    # Clear IFS for the expansion only, then put it back immediately. bash 3.2 is
+    # still the system bash on macOS, and it mangles an unquoted array expansion
+    # while IFS is empty: every element gets joined into one string. Restoring IFS
+    # before the array is read back keeps 3.2 and 5.x in agreement.
     local -a matches=()
-    local IFS=''
+    local saved_ifs="$IFS"
+    IFS=''
     # shellcheck disable=SC2206  # deliberate: globbing with splitting disabled
     matches=($pattern)
+    IFS="$saved_ifs"
 
     [[ "$nullglob_was_set" == false ]] && shopt -u nullglob
     [[ "$nocaseglob_was_set" == false ]] && shopt -u nocaseglob
 
+    [[ ${#matches[@]} -eq 0 ]] && return 0
+
     local match
-    for match in ${matches[@]+"${matches[@]}"}; do
+    for match in "${matches[@]}"; do
         [[ -d "$match" ]] && printf '%s\n' "$match"
     done
     return 0
