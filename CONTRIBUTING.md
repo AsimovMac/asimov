@@ -100,6 +100,15 @@ Makefile                # Build targets (test, lint, check, install, uninstall)
 
 ## Releasing (maintainers)
 
+**The pipeline, end to end:**
+
+1. **Develop** on a branch → **PR into `main`**. CI (macOS 14 + 15) must pass; commits must be signed.
+2. **Merge** to `main`.
+3. **`make release`** tags `vX.Y.Z` (signed) → GitHub Actions publishes the release + `asimov` binary.
+4. **Homebrew** autobumps `brew install asimov` on its own (~3h later). Nothing to do.
+
+Version = SemVer: new feature → **minor**, bug fix → **patch**. Pre-releases: `make release-beta` (GitHub pre-release; Homebrew ignores it). Details below.
+
 `main` is protected: signed commits + PR required + both CI checks (`test (macos-14)`, `test (macos-15)`) must pass. The flow below respects all of that.
 
 ### One-time setup
