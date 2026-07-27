@@ -109,7 +109,7 @@ Asimov's default behavior sets **Time Machine exclusions** — nothing else. Two
 
 | | |
 | --- | --- |
-| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism from Time Machine exclusion, and off by default. Pass `--spotlight` to have Asimov report the same discovered directories as Spotlight-exclusion candidates — it prints the `sudo` command to run yourself rather than touching Spotlight state itself. See [`--spotlight`](#usage) |
+| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism from Time Machine exclusion, and off by default. Pass `--spotlight` to have Asimov also exclude the same discovered directories from Spotlight. Excluding requires root, so run with `sudo` to apply it; without `sudo` Asimov reports what it would exclude and explains why it needs root. See [`--spotlight`](#usage) |
 | **Shrink existing backups** | An exclusion stops a directory being backed up *from now on*. Copies already on the backup disk stay until you delete them or Time Machine ages them out |
 | **Delete anything** | Asimov never removes a file from your Mac. It only sets an attribute on the directory |
 
@@ -141,7 +141,7 @@ asimov [--dry-run] [--verbose] [--quiet] [--stats] [--spotlight] [--no-read-cach
 | `--verbose`         | Show all directories including already-excluded ones             |
 | `--quiet`           | Suppress all output except errors                                |
 | `--stats`           | Show per-directory sizes and a total-space summary               |
-| `--spotlight`       | Also report directories to exclude from Spotlight — prints a `sudo plutil`/`killall mds` command to run yourself; independent of Time Machine exclusion |
+| `--spotlight`       | Also exclude directories from Spotlight, independently of Time Machine exclusion. Requires root — run with `sudo` to apply, or without it to see what would be excluded and why root is needed. Works without root under `--dry-run` |
 | `--no-read-cache`   | Ignore cached state; re-discover and re-verify everything, then rebuild the cache |
 | `--no-write-cache`  | Run normally but don't persist any cache updates                 |
 
