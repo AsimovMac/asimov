@@ -141,7 +141,7 @@ asimov [--dry-run] [--verbose] [--quiet] [--stats] [--spotlight] [--no-read-cach
 | `--verbose`         | Show all directories including already-excluded ones             |
 | `--quiet`           | Suppress all output except errors                                |
 | `--stats`           | Show per-directory sizes and a total-space summary               |
-| `--spotlight`       | Also exclude directories from Spotlight, independently of Time Machine exclusion. Requires root — run with `sudo` to apply, or without it to see what would be excluded and why root is needed. Works without root under `--dry-run` |
+| `--spotlight`       | Also exclude directories from Spotlight, independently of Time Machine exclusion. Requires root — run with `sudo` to apply, or without it to see what would be excluded and why root is needed. Works without root under `--dry-run`. Not applied by the [scheduled run](#schedule) — that runs unprivileged |
 | `--no-read-cache`   | Ignore cached state; re-discover and re-verify everything, then rebuild the cache |
 | `--no-write-cache`  | Run normally but don't persist any cache updates                 |
 
@@ -189,6 +189,8 @@ The curl and source installers set up a daily launchd job automatically. To trig
 launchctl kickstart gui/$(id -u)/com.stevegrunwell.asimov   # run now
 launchctl bootout   gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
 ```
+
+This LaunchAgent runs as your regular (unprivileged) user, the same as a per-user cron job would — it has no `UserName`/`GroupName` override, so it never runs as root. That's fine for Time Machine exclusion, which the schedule fully automates. It means `--spotlight` exclusions are **not** kept up to date automatically: applying them needs root (see [`--spotlight`](#usage)), and a scheduled run can't supply a `sudo` password unattended, so it just reports what it would exclude without applying it. If you use `--spotlight`, periodically run `sudo asimov --spotlight` yourself to pick up newly discovered directories.
 
 ## Configuration
 

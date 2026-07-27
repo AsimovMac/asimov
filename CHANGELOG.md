@@ -31,7 +31,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   or write the Spotlight Privacy list, so `sudo asimov --spotlight` applies the exclusions
   directly (and restarts Spotlight's metadata server to pick them up); running without
   `sudo` changes nothing and prints a warning explaining why root is required, and
-  `--dry-run --spotlight` previews candidates without needing root at all
+  `--dry-run --spotlight` previews candidates without needing root at all. Note that the
+  scheduled LaunchAgent run (see `## Schedule` in the README) always runs unprivileged, so
+  it never applies Spotlight exclusions on its own — only `sudo asimov --spotlight`, run
+  manually, does. Time Machine exclusion is unaffected and stays fully automated
   ([#70](https://github.com/AsimovMac/asimov/issues/70)).
 
 ### Changed
