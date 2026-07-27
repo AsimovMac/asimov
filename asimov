@@ -9,7 +9,11 @@ umask 077
 ASIMOV_SIZE_LOG="$(mktemp)"
 ASIMOV_EXCLUDED_CACHE="$(mktemp)"
 ASIMOV_PATH_CACHE_TMP=""
-trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP"' EXIT
+# Accumulates new Spotlight-exclusion candidates across every call site in this
+# run, so the batched `plutil`/`killall mds` command is printed once at the end
+# instead of once per call site.
+ASIMOV_SPOTLIGHT_CANDIDATES="$(mktemp)"
+trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP" "$ASIMOV_SPOTLIGHT_CANDIDATES"' EXIT
 
 # Look through the local filesystem and exclude development dependencies
 # from Apple Time Machine backups.
@@ -30,7 +34,7 @@ trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP"
 readonly ASIMOV_VERSION='0.10.0'
 
 print_usage() {
-    printf 'Usage: asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [directory]\n'
+    printf 'Usage: asimov [--dry-run] [--verbose] [--quiet] [--stats] [--spotlight] [--no-read-cache] [--no-write-cache] [directory]\n'
     printf '       asimov prune [--quiet]\n'
     printf '\n'
     printf 'Exclude development dependency directories from Time Machine backups.\n'
@@ -45,6 +49,9 @@ print_usage() {
     printf '  --verbose          Show all directories including already-excluded ones\n'
     printf '  --quiet            Suppress all output except errors\n'
     printf '  --stats            Show directory sizes and total space in the summary\n'
+    printf '  --spotlight        Also report directories to exclude from Spotlight (prints a\n'
+    printf '                     sudo command to run yourself — Asimov never touches Spotlight\n'
+    printf '                     state, and this is independent of Time Machine exclusion)\n'
     printf '  --no-read-cache    Ignore cached state; re-discover and re-verify everything (rebuilds the cache)\n'
     printf '  --no-write-cache   Run normally but do not persist any cache updates\n'
     printf '  --full-scan        Alias for --no-read-cache\n'
@@ -70,6 +77,7 @@ ASIMOV_QUIET=
 ASIMOV_STATS=
 ASIMOV_NO_READ_CACHE=
 ASIMOV_NO_WRITE_CACHE=
+ASIMOV_SPOTLIGHT=
 ASIMOV_SCAN_DIR=
 
 # Subcommands are recognised only as the first argument, so that a directory
@@ -87,6 +95,7 @@ for arg in "$@"; do
         --verbose)    ASIMOV_VERBOSE=1 ;;
         --quiet)      ASIMOV_QUIET=1 ;;
         --stats)      ASIMOV_STATS=1 ;;
+        --spotlight)  ASIMOV_SPOTLIGHT=1 ;;
         # Cache controls along two axes. --full-scan and --no-cache are kept as
         # back-compat aliases: --full-scan = --no-read-cache; --no-cache = both.
         --no-read-cache)  ASIMOV_NO_READ_CACHE=1 ;;
@@ -111,6 +120,7 @@ readonly ASIMOV_QUIET
 readonly ASIMOV_STATS
 readonly ASIMOV_NO_READ_CACHE
 readonly ASIMOV_NO_WRITE_CACHE
+readonly ASIMOV_SPOTLIGHT
 
 if [[ -n "$ASIMOV_QUIET" && -n "$ASIMOV_VERBOSE" ]]; then
     echo "asimov: --quiet and --verbose are mutually exclusive" >&2
@@ -168,6 +178,12 @@ readonly ASIMOV_EXCLUDED_STATE="${ASIMOV_ROOT}/.cache/asimov/excluded"
 readonly ASIMOV_FAILED_STATE="${ASIMOV_ROOT}/.cache/asimov/failed"
 readonly ASIMOV_MDFIND_SEEN="${ASIMOV_ROOT}/.cache/asimov/mdfind_seen"
 readonly ASIMOV_PATH_CACHE="${ASIMOV_ROOT}/.cache/asimov/paths"
+
+# Paths Asimov has already reported as Spotlight-exclusion candidates (via
+# --spotlight), so repeat runs don't print the same sudo command again.
+# Entirely independent of ASIMOV_EXCLUDED_STATE/CACHE above — Time Machine and
+# Spotlight exclusion are unrelated mechanisms and must not gate each other.
+readonly ASIMOV_SPOTLIGHT_STATE="${ASIMOV_ROOT}/.cache/asimov/spotlight_pending"
 
 # Time Machine's system preferences, home of the "sticky" path exclusion list
 # (tmutil addexclusion -p). Overridable so tests can point at a fixture.
@@ -850,7 +866,28 @@ record_excluded_path() {
     fi
 }
 
-# Process newline-separated paths from stdin: check the excluded-path cache,
+# Read newline-separated paths from stdin once (the single filesystem-discovery
+# consumption point — find/mdfind are the expensive part), then hand the resulting
+# in-memory list to each exclusion mechanism independently. Time Machine exclusion
+# always runs; Spotlight reporting only runs with --spotlight. Neither mechanism's
+# filter/state gates the other — see exclude_paths_from_array and
+# report_spotlight_candidates.
+process_discovered_paths() {
+    local path
+    local -a all_paths=()
+
+    while IFS=$'\n' read -r path; do
+        [[ -d "$path" ]] || continue
+        all_paths+=("$path")
+    done
+    [[ ${#all_paths[@]} -eq 0 ]] && return 0
+
+    exclude_paths_from_array "${all_paths[@]}"
+    [[ -n "$ASIMOV_SPOTLIGHT" ]] && report_spotlight_candidates "${all_paths[@]}"
+    return 0
+}
+
+# Exclude the given paths from Time Machine: check the excluded-path cache,
 # call tmutil addexclusion (unless dry-run), and log sizes.
 #
 # Performance notes (learned the hard way):
@@ -864,15 +901,9 @@ record_excluded_path() {
 #   1. Bulk grep against Spotlight + persistent state (instant, catches ~90%)
 #   2. Filter descendants of fixed dirs (instant, catches ~5%)
 #   3. tmutil isexcluded per-path guard (fast, catches remaining stale entries)
-exclude_paths_from_stdin() {
+exclude_paths_from_array() {
     local path
-    local -a all_paths=()
-
-    # Read all paths from stdin, filtering non-directories
-    while IFS=$'\n' read -r path; do
-        [[ -d "$path" ]] || continue
-        all_paths+=("$path")
-    done
+    local -a all_paths=("$@")
     [[ ${#all_paths[@]} -eq 0 ]] && return 0
 
     # Layer 1: Bulk filter against excluded-path cache (1 grep vs N subprocess spawns).
@@ -983,9 +1014,70 @@ exclude_paths_from_stdin() {
     fi
 }
 
+# Report the given paths as Spotlight-exclusion candidates (only when --spotlight
+# is set). Independent of Time Machine exclusion: filtered only against
+# ASIMOV_SPOTLIGHT_STATE, never against ASIMOV_EXCLUDED_STATE/CACHE, so a path
+# already Time-Machine-excluded (or not) is reported exactly the same way.
+#
+# Asimov cannot read or write macOS's Spotlight Privacy list without root (it's
+# a plist under /System/Volumes/Data/.Spotlight-V100, unreadable even with plutil
+# as a normal user), and Asimov never runs as root or prompts for a password
+# (it also runs unattended via the LaunchAgent, where sudo can't prompt at all).
+# So instead of executing anything, this prints one batched command the user can
+# run themselves — the same "print, don't act" precedent as `asimov prune`.
+report_spotlight_candidates() {
+    local path
+    local -a all_paths=("$@")
+    [[ ${#all_paths[@]} -eq 0 ]] && return 0
+
+    local -a candidates=()
+    if [[ -f "$ASIMOV_SPOTLIGHT_STATE" ]]; then
+        local new_paths_str
+        new_paths_str="$(printf '%s\n' "${all_paths[@]}" | grep -Fxvf "$ASIMOV_SPOTLIGHT_STATE" || true)"
+        if [[ -n "$new_paths_str" ]]; then
+            while IFS= read -r path; do
+                candidates+=("$path")
+            done <<< "$new_paths_str"
+        fi
+    else
+        candidates=("${all_paths[@]}")
+    fi
+    [[ ${#candidates[@]} -eq 0 ]] && return 0
+
+    for path in "${candidates[@]}"; do
+        printf '%s\n' "$path" >> "$ASIMOV_SPOTLIGHT_CANDIDATES"
+        # Persist immediately (unless dry-run) so re-running --spotlight doesn't
+        # re-report a path the user was already shown the command for.
+        if [[ -z "$ASIMOV_DRY_RUN" ]]; then
+            ensure_cache_dir
+            printf '%s\n' "$path" >> "$ASIMOV_SPOTLIGHT_STATE"
+        fi
+    done
+}
+
+# Print the batched plutil/killall command for every candidate accumulated
+# this run (across all call sites), once, at the end of a --spotlight run.
+print_spotlight_command() {
+    [[ -z "$ASIMOV_SPOTLIGHT" || -n "$ASIMOV_QUIET" ]] && return 0
+    local count
+    count=$(wc -l < "$ASIMOV_SPOTLIGHT_CANDIDATES" | tr -d ' ')
+    [[ "$count" -eq 0 ]] && return 0
+
+    local path insert_args=""
+    while IFS= read -r path; do
+        insert_args="${insert_args} -insert Exclusions.0 -string '${path}'"
+    done < "$ASIMOV_SPOTLIGHT_CANDIDATES"
+
+    printf '\n%s%s directories to also exclude from Spotlight (independent of Time Machine):%s\n' \
+        "$ASIMOV_COLOR_INFO" "$count" "$ASIMOV_COLOR_RESET"
+    printf 'sudo plutil%s \\\n    /System/Volumes/Data/.Spotlight-V100/VolumeConfiguration.plist\n' \
+        "$insert_args"
+    printf 'sudo killall mds   # restart Spotlight so it picks up the change\n'
+}
+
 # Build find parameters to skip ASIMOV_SKIP_PATHS (hardcoded directories like .Trash, Library).
 # Already-excluded paths are NOT pruned here — they are filtered cheaply via grep in
-# exclude_paths_from_stdin instead, avoiding the O(dirs × prune_count) performance trap.
+# process_discovered_paths instead, avoiding the O(dirs × prune_count) performance trap.
 # Result is stored in global find_parameters_skip.
 build_find_skip_params() {
     find_parameters_skip=()
@@ -1156,7 +1248,7 @@ if [[ "$use_cache" == true ]]; then
     total_before=$(( $(wc -l < "$cached_valid" | tr -d ' ') + $(wc -l < "$new_paths" | tr -d ' ') ))
     total_after=$(wc -l < "$deduped" | tr -d ' ')
     verbose_timing "Dedup: ${total_before} paths → ${total_after} (removed $((total_before - total_after)) nested)"
-    cat "$deduped" | exclude_paths_from_stdin
+    cat "$deduped" | process_discovered_paths
     rm -f "$deduped"
 
     # Update cache: append new discoveries to existing cache, then sort/dedup/prune
@@ -1186,13 +1278,13 @@ else
     if [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
         init_path_cache
         { find "${ASIMOV_SCAN_DIRS[@]}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
-            || true; } | tee -a "$ASIMOV_PATH_CACHE" | exclude_paths_from_stdin
+            || true; } | tee -a "$ASIMOV_PATH_CACHE" | process_discovered_paths
         verbose_timing "Find + exclude complete"
         finalize_path_cache
         verbose_timing "Cache finalized"
     else
         { find "${ASIMOV_SCAN_DIRS[@]}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
-            || true; } | exclude_paths_from_stdin
+            || true; } | process_discovered_paths
         verbose_timing "Find + exclude complete"
     fi
 fi
@@ -1205,7 +1297,7 @@ if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" ]]; then
         if [[ -d "$fixed_dir" ]]; then
             echo "$fixed_dir"
         fi
-    done | exclude_paths_from_stdin
+    done | process_discovered_paths
 fi
 
 # Always process extra fixed dirs from config (user explicitly wants them).
@@ -1216,9 +1308,10 @@ if [[ ${#ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]} -gt 0 ]]; then
         if [[ -d "$fixed_dir" ]]; then
             echo "$fixed_dir"
         fi
-    done | exclude_paths_from_stdin
+    done | process_discovered_paths
 fi
 
 verbose_timing "All exclusions processed"
 [[ -z "$ASIMOV_QUIET" ]] && print_exclusion_summary
+print_spotlight_command
 exit 0
