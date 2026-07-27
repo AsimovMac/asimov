@@ -105,11 +105,11 @@ This means Asimov never touches a folder that just happens to share a common nam
 
 ## What Asimov doesn't do
 
-Asimov sets **Time Machine exclusions** — nothing else. Three things it's often expected to do, and doesn't:
+Asimov's default behavior sets **Time Machine exclusions** — nothing else. Two things it's often expected to do, and doesn't, plus one it can help with when asked:
 
 | | |
 | --- | --- |
-| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism. Excluding `node_modules` from Time Machine does not stop it appearing in Spotlight results. Tracked in [#70](https://github.com/AsimovMac/asimov/issues/70) |
+| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism from Time Machine exclusion, and off by default. Pass `--spotlight` to have Asimov also exclude the same discovered directories from Spotlight. Excluding requires root, so run with `sudo` to apply it; without `sudo` Asimov reports what it would exclude and explains why it needs root. See [`--spotlight`](#usage) |
 | **Shrink existing backups** | An exclusion stops a directory being backed up *from now on*. Copies already on the backup disk stay until you delete them or Time Machine ages them out |
 | **Delete anything** | Asimov never removes a file from your Mac. It only sets an attribute on the directory |
 
@@ -131,7 +131,7 @@ If `mdfind` doesn't list your projects, the run isn't reaching them. The two usu
 ## Usage
 
 ```
-asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version]
+asimov [--dry-run] [--verbose] [--quiet] [--stats] [--spotlight] [--no-read-cache] [--no-write-cache] [--help] [--version]
 ```
 
 
@@ -141,6 +141,7 @@ asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write
 | `--verbose`         | Show all directories including already-excluded ones             |
 | `--quiet`           | Suppress all output except errors                                |
 | `--stats`           | Show per-directory sizes and a total-space summary               |
+| `--spotlight`       | Also exclude directories from Spotlight, independently of Time Machine exclusion. Requires root — run with `sudo` to apply, or without it to see what would be excluded and why root is needed. Works without root under `--dry-run`. Not applied by the [scheduled run](#schedule) — that runs unprivileged |
 | `--no-read-cache`   | Ignore cached state; re-discover and re-verify everything, then rebuild the cache |
 | `--no-write-cache`  | Run normally but don't persist any cache updates                 |
 
@@ -188,6 +189,8 @@ The curl and source installers set up a daily launchd job automatically. To trig
 launchctl kickstart gui/$(id -u)/com.stevegrunwell.asimov   # run now
 launchctl bootout   gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
 ```
+
+This LaunchAgent runs as your regular (unprivileged) user, the same as a per-user cron job would — it has no `UserName`/`GroupName` override, so it never runs as root. That's fine for Time Machine exclusion, which the schedule fully automates. It means `--spotlight` exclusions are **not** kept up to date automatically: applying them needs root (see [`--spotlight`](#usage)), and a scheduled run can't supply a `sudo` password unattended, so it just reports what it would exclude without applying it. If you use `--spotlight`, periodically run `sudo asimov --spotlight` yourself to pick up newly discovered directories.
 
 ## Configuration
 

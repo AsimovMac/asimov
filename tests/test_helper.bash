@@ -179,11 +179,51 @@ refute_failed() {
     fi
 }
 
+# Assert that a path is present in the Spotlight-candidate state file
+# (~/.cache/asimov/spotlight_pending), written by --spotlight.
+assert_spotlight_pending() {
+    local path="$1"
+    local state_file="${HOME}/.cache/asimov/spotlight_pending"
+    if [[ ! -f "$state_file" ]]; then
+        echo "Expected spotlight_pending state file to exist, but it does not." >&2
+        return 1
+    fi
+    if ! grep -Fxq "$path" "$state_file"; then
+        echo "Expected '$path' to be in spotlight_pending state, but it was not." >&2
+        echo "spotlight_pending contents:" >&2
+        cat "$state_file" >&2
+        return 1
+    fi
+}
+
+# Assert that a path is NOT present in the Spotlight-candidate state file.
+refute_spotlight_pending() {
+    local path="$1"
+    local state_file="${HOME}/.cache/asimov/spotlight_pending"
+    [[ -f "$state_file" ]] || return 0
+    if grep -Fxq "$path" "$state_file"; then
+        echo "Expected '$path' to NOT be in spotlight_pending state, but it was." >&2
+        echo "spotlight_pending contents:" >&2
+        cat "$state_file" >&2
+        return 1
+    fi
+}
+
 # Load format_size_kb and its constants for unit testing.
 # Extracts just the constants and function from the main script
 # without executing the rest of the script.
 load_format_size_kb() {
     eval "$(awk '/^readonly ASIMOV_KB_PER/; /^format_size_kb\(\)/,/^}/' "${BATS_TEST_DIRNAME}/../asimov")"
+}
+
+# Load write_spotlight_exclusions for unit testing, without running the rest
+# of asimov (which would require root to touch a real Spotlight plist). The
+# function itself doesn't check EUID, so it can be exercised directly against
+# a fixture plist under an unprivileged Bats process — only the *real*
+# Spotlight plist under /System/Volumes/Data is root-protected; plutil has no
+# such restriction on arbitrary files.
+load_write_spotlight_exclusions() {
+    eval "$(awk '/^write_spotlight_exclusions\(\)/,/^}/' "${BATS_TEST_DIRNAME}/../asimov")"
 }
 
 # Write a Time Machine preferences fixture holding a sticky exclusion list
