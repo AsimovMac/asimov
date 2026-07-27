@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- Vagrant boxes (`~/.vagrant.d/boxes`) is now one of the built-in global caches (opt-in via `[fixed_dirs] enabled = true`)
 - `make test-system-bash` runs the suite under the macOS system bash (3.2), which is what
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and

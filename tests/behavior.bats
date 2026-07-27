@@ -255,6 +255,14 @@ enabled = true"
   refute_excluded "${HOME}/go/pkg/mod/github.com/foo/bar@v1.2.3/vendor"
 }
 
+@test "excludes the Vagrant boxes directory when fixed dirs are enabled" {
+  mkdir -p "${HOME}/.vagrant.d/boxes"
+  write_config "[fixed_dirs]
+enabled = true"
+  run_asimov
+  assert_excluded "${HOME}/.vagrant.d/boxes"
+}
+
 @test "does not re-exclude already excluded fixed directory" {
   mkdir -p "${HOME}/.cache"
   write_config "[fixed_dirs]

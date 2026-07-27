@@ -828,6 +828,7 @@ readonly ASIMOV_FIXED_DIRS=(
     "${ASIMOV_ROOT}/.kube/cache"                      # Kubernetes API cache
     "${ASIMOV_ROOT}/.kube/http-cache"                 # Kubernetes HTTP cache
     "${ASIMOV_ROOT}/go/pkg/mod"                       # Go module cache (0555 inside; exclude as a whole)
+    "${ASIMOV_ROOT}/.vagrant.d/boxes"                 # Vagrant boxes cache
 )
 
 # Record an excluded path: log for counting, compute size only with --stats.
