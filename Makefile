@@ -38,7 +38,7 @@ test-system-bash: ## Run Bats tests under the macOS system bash (3.2), as shippe
 	@$(MAKE) --no-print-directory test BASH_BIN=/bin/bash
 
 lint: ## Run Shellcheck on all shell scripts
-	@shellcheck asimov scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh scripts/test.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind
+	@shellcheck asimov scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh scripts/test.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind tests/bin/launchctl
 
 check: test lint ## Run tests and linting
 
