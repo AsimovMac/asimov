@@ -8,6 +8,16 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.11.0] — 2026-07-29
+
+### Added
+
 - `asimov doctor` checks an install rather than your projects: which `asimov` your shell
   actually runs (and flags an older one shadowing it on `PATH`), whether a schedule is
   installed and loaded, whether `~/.cache/asimov/` is readable and writable by you,
@@ -349,7 +359,8 @@ v0.8.0, after a `v0.9.0-beta.1`/`beta.2` testing round.
 Initial public release.
 
 
-[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.10.0...main
+[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.11.0...main
+[0.11.0]: https://github.com/AsimovMac/asimov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/AsimovMac/asimov/compare/v0.8.0...v0.10.0
 [0.8.0]: https://github.com/django23/asimov/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/django23/asimov/compare/v0.6.4...v0.7.0
