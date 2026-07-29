@@ -1,5 +1,71 @@
 # Upgrading Asimov
 
+## To v0.10.0 from v0.3.0 (the original `stevegrunwell/asimov`)
+
+Most people upgrading are coming from `0.3.0`, the version Homebrew shipped for years.
+It upgrades cleanly, but three leftovers can outlive it. Work through this in order.
+
+**Before you start: don't run `asimov` to check your version.** v0.3.0 parses no
+arguments at all — it ignores `--version`, `--help`, and every subcommand, and goes
+straight to scanning and writing Time Machine exclusions. Read the version out of the
+file instead:
+
+```sh
+grep -m1 -E '@version|ASIMOV_VERSION=' "$(command -v asimov)"
+```
+
+### 1. Stop the schedule before you uninstall
+
+Uninstalling first leaves the LaunchAgent behind with nothing to run:
+
+```sh
+brew services stop asimov
+launchctl bootout gui/$(id -u)/homebrew.mxcl.asimov 2>/dev/null
+rm -f ~/Library/LaunchAgents/homebrew.mxcl.asimov.plist
+```
+
+### 2. Replace the binary
+
+```sh
+brew uninstall asimov
+brew install asimov
+```
+
+If `brew uninstall` reports `Permission denied @ apply2files`, the old cellar files are
+owned by another user — Homebrew prints the `sudo` command to force it, and that is safe
+here.
+
+### 3. Clear the old cache
+
+v0.10.0 keeps state in `~/.cache/asimov/`. If anything ever ran Asimov as root, those
+files are root-owned and unreadable by you:
+
+```sh
+rm -rf ~/.cache/asimov
+```
+
+v0.10.0 and earlier crashed outright on this with a bare `Permission denied`. Current
+versions warn and carry on, but clearing it is still the fix.
+
+### 4. Check the result
+
+`doctor` exists only in current versions, so it comes last — there is nothing to run
+before the new binary is in place:
+
+```sh
+asimov doctor
+```
+
+It reports a shadowed binary, a leftover schedule, an unreadable cache, and a bad config,
+and exits non-zero if it finds any. If it prints usage errors or starts a scan instead,
+an old binary is still first on your `PATH` — `doctor` names the one it found.
+
+### One thing that isn't broken
+
+Asimov is a one-shot scan, not a daemon. After `brew services start asimov`, `ps aux |
+grep asimov` finding nothing is expected: it scans, excludes, and exits. To confirm it is
+actually scheduled, use `asimov doctor`.
+
 ## To v0.10.0 (from the `django23/asimov` fork)
 
 `0.10.0` folds the fork's work (v0.4.0–v0.8.0, plus a `v0.9.0-beta` round) back into
