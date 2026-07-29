@@ -14,6 +14,7 @@ readonly TEST_FILES=(
     tests/sentinels.bats
     tests/behavior.bats
     tests/cache.bats
+    tests/doctor.bats
     tests/format.bats
     tests/plist.bats
 )
