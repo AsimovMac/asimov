@@ -132,6 +132,8 @@ If `mdfind` doesn't list your projects, the run isn't reaching them. The two usu
 
 ```
 asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version]
+asimov prune  [--quiet]
+asimov doctor [--quiet]
 ```
 
 
@@ -179,6 +181,44 @@ Asimov keeps a cache under `~/.cache/asimov/` so repeat runs are near-instant. T
 - `--no-write-cache` — *"don't touch state."* Uses the fast cache to read, but persists nothing. Handy with `--dry-run`.
 - Both together = a fully stateless run that reads and writes nothing. **`--no-cache` is an alias for this.**
 
+
+### `asimov doctor`
+
+Checks the install itself rather than your projects. Run it when something seems off, or straight after an upgrade.
+
+```
+$ asimov doctor
+
+Asimov doctor
+
+Install
+  ✓ asimov 0.10.0 (/opt/homebrew/bin/asimov)
+  ✗ typing 'asimov' runs a different binary — this one is shadowed
+      /usr/local/bin/asimov  (version 0.3.0)
+      Remove the one you don't want, or fix the order of PATH.
+
+Schedule
+  ✗ homebrew.mxcl.asimov: its program /opt/homebrew/Cellar/asimov/0.3.0/bin/asimov no longer exists
+      launchctl bootout gui/$(id -u)/homebrew.mxcl.asimov
+      rm ~/Library/LaunchAgents/homebrew.mxcl.asimov.plist
+
+Cache
+  ✗ ~/.cache/asimov/excluded is not readable and writable by you (owner: root)
+      A run as root left these behind. Clear them:
+      rm -rf ~/.cache/asimov
+
+Config
+  ✓ ~/.config/asimov/config looks valid
+
+Time Machine
+  ✓ tmutil can read exclusions
+
+3 problems found.
+```
+
+It covers five things: which `asimov` your shell actually runs, whether a schedule is installed and loaded, whether the cache is readable and writable by you, whether the config parses, and whether `tmutil` can read exclusions at all (it can't without Full Disk Access).
+
+`doctor` is **read-only** — it prints the fix rather than applying it — and it never executes another `asimov` binary it finds, reading versions out of the file instead. It exits `1` if it finds anything, so it's safe to use in a script.
 
 ## Schedule
 
