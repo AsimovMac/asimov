@@ -408,3 +408,113 @@ load test_helper
   [[ "$status" -eq 0 ]]
   [[ "$output" == *"Using cached paths"* ]]
 }
+
+# =============================================================================
+# Unusable cache files (issue #122)
+#
+# A cache is an optimisation. An unreadable or unwritable state file — the state
+# a run as root leaves behind — must degrade the run, never abort it.
+# =============================================================================
+
+# These tests make files unreadable/unwritable, which has no effect as root.
+require_non_root() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    skip "chmod-based tests are meaningless as root"
+  fi
+}
+
+@test "run survives an unreadable excluded-state file" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  mkdir -p "${HOME}/.cache/asimov"
+  echo "/some/old/path" > "${HOME}/.cache/asimov/excluded"
+  chmod 000 "${HOME}/.cache/asimov/excluded"
+
+  run_asimov
+  chmod 644 "${HOME}/.cache/asimov/excluded"
+
+  [[ "$status" -eq 0 ]]
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+}
+
+@test "unreadable cache prints a warning naming the reset command" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  mkdir -p "${HOME}/.cache/asimov"
+  echo "/some/old/path" > "${HOME}/.cache/asimov/excluded"
+  chmod 000 "${HOME}/.cache/asimov/excluded"
+
+  run_asimov
+  chmod 644 "${HOME}/.cache/asimov/excluded"
+
+  [[ "$output" == *"is not readable"* ]]
+  [[ "$output" == *"rm -rf ${HOME}/.cache/asimov"* ]]
+}
+
+@test "unreadable cache warns once, not once per file" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  mkdir -p "${HOME}/.cache/asimov"
+  echo "/some/old/path" > "${HOME}/.cache/asimov/excluded"
+  echo "/some/old/path" > "${HOME}/.cache/asimov/failed"
+  chmod 000 "${HOME}/.cache/asimov/excluded" "${HOME}/.cache/asimov/failed"
+
+  run_asimov
+  chmod 644 "${HOME}/.cache/asimov/excluded" "${HOME}/.cache/asimov/failed"
+
+  local warnings
+  warnings="$(printf '%s\n' "$output" | grep -c "continuing without the cache" || true)"
+  [[ "$warnings" -eq 1 ]]
+}
+
+@test "run survives an unwritable cache directory" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  mkdir -p "${HOME}/.cache/asimov"
+  chmod 500 "${HOME}/.cache/asimov"
+
+  run_asimov
+  chmod 700 "${HOME}/.cache/asimov"
+
+  [[ "$status" -eq 0 ]]
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+}
+
+@test "full scan survives an unwritable path cache file" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  write_path_cache
+  chmod 400 "${HOME}/.cache/asimov/paths"
+
+  # --full-scan has to rewrite the cache, so this exercises the tee'd pipeline
+  # that a read-only run never reaches.
+  run_asimov --full-scan
+  chmod 644 "${HOME}/.cache/asimov/paths"
+
+  [[ "$status" -eq 0 ]]
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+}
+
+@test "cached run with an unwritable path cache still excludes what it cached" {
+  require_non_root
+  create_project "Code/My-Project" "package.json" "node_modules"
+  write_path_cache "${HOME}/Code/My-Project/node_modules"
+  chmod 400 "${HOME}/.cache/asimov/paths"
+
+  run_asimov
+  chmod 644 "${HOME}/.cache/asimov/paths"
+
+  [[ "$status" -eq 0 ]]
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+}
+
+@test "prune survives an unreadable path cache" {
+  require_non_root
+  write_path_cache "${HOME}/gone"
+  chmod 000 "${HOME}/.cache/asimov/paths"
+
+  run_asimov prune
+  chmod 644 "${HOME}/.cache/asimov/paths"
+
+  [[ "$status" -eq 0 ]]
+}
