@@ -18,6 +18,12 @@ shift || true
 case "$subcommand" in
   isexcluded)
     path="${1:-}"
+    # Simulate tmutil being unable to read exclusions at all — what a Mac
+    # without Full Disk Access looks like to `asimov doctor`.
+    if [[ -n "${ASIMOV_TEST_TMUTIL_ISEXCLUDED_FAIL:-}" ]]; then
+      echo "tmutil: unable to read exclusion setting" >&2
+      exit 1
+    fi
     # A path is excluded if it — or any ancestor directory — is in the exclusion
     # database. Real tmutil reports descendants of a path-based exclusion as
     # excluded too (TM exclusions are recursive), so a manually excluded parent

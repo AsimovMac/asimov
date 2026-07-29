@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# Mock launchctl for the Asimov test suite.
+#
+# Only the subcommands `asimov doctor` uses are implemented. The set of loaded
+# labels comes from ASIMOV_TEST_LAUNCHCTL_LOADED (space-separated); anything
+# else is reported as not loaded, exactly as the real launchctl does.
+
+set -eu
+
+case "${1:-}" in
+    list)
+        label="${2:-}"
+        if [[ -z "$label" ]]; then
+            for loaded in ${ASIMOV_TEST_LAUNCHCTL_LOADED:-}; do
+                printf -- '-\t0\t%s\n' "$loaded"
+            done
+            exit 0
+        fi
+        for loaded in ${ASIMOV_TEST_LAUNCHCTL_LOADED:-}; do
+            if [[ "$loaded" == "$label" ]]; then
+                printf '{\n\t"Label" = "%s";\n};\n' "$label"
+                exit 0
+            fi
+        done
+        echo "Could not find service \"${label}\"" >&2
+        exit 113
+        ;;
+    *)
+        exit 0
+        ;;
+esac
