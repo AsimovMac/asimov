@@ -34,8 +34,14 @@ require_non_root() {
 }
 
 @test "doctor reports the running version" {
+  # Derived from the script, never hardcoded: a literal here breaks on every
+  # release, which is exactly what it did on the bump to 0.11.0.
+  run_asimov --version
+  local version="$output"
+  [[ -n "$version" ]]
+
   run_asimov doctor
-  [[ "$output" == *"0.10.0"* ]]
+  [[ "$output" == *"$version"* ]]
 }
 
 @test "doctor never modifies Time Machine exclusions" {
