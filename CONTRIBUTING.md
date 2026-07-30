@@ -58,20 +58,22 @@ The main script supports `--help`, `--version`, `--dry-run`, `--verbose`, and `-
 
 ## Adding a new dependency pattern
 
-This is the most common type of contribution. To add a new ecosystem or dependency directory:
+This is the most common type of contribution, and it needs no bash: sentinels live in a data file.
 
-1. **Add the sentinel pair** to the `ASIMOV_VENDOR_DIR_SENTINELS` array in [`asimov`](asimov) — one `'directory sentinel'` entry per pattern.
-2. **Add a test** in [`tests/sentinels.bats`](tests/sentinels.bats) using `create_project` to build the fixture. Keep this file in sync with `ASIMOV_VENDOR_DIR_SENTINELS` (one test per sentinel pair).
+1. **Add a row** to [`data/sentinels.tsv`](data/sentinels.tsv) — one per pattern, fields separated by a **tab**.
+2. **Add a test** in [`tests/sentinels.bats`](tests/sentinels.bats) using `create_project` to build the fixture. Keep this file in sync with `data/sentinels.tsv` (one test per row).
 3. **Run `make check`** to verify your changes pass tests and linting.
 4. **Add a changelog entry** under the `[Unreleased]` section in [`CHANGELOG.md`](CHANGELOG.md).
 
-**Example sentinel entry:**
+**Example sentinel row** (`dir`, `sentinel`, `ecosystem`, `note`):
 
-```bash
-'.zig-cache build.zig'   # Zig build cache
+```tsv
+.zig-cache	build.zig	zig	build cache
 ```
 
-This means: exclude `.zig-cache/` only when `build.zig` exists in the same directory.
+This means: exclude `.zig-cache/` only when `build.zig` exists in the same directory. Glob metacharacters are allowed in the sentinel, e.g. `DerivedData	*.xcodeproj`.
+
+The same applies to global caches ([`data/fixed-dirs.tsv`](data/fixed-dirs.tsv)) and skipped directories ([`data/skip-paths.tsv`](data/skip-paths.tsv)). Paths in those two are **relative to the home directory** — write `.npm/_cacache`, not `~/.npm/_cacache`.
 
 ## Commit conventions
 
@@ -105,10 +107,28 @@ type(scope): short description
 ## Project structure
 
 ```
-asimov                  # Main bash script
+bin/asimov              # Launcher: finds the library and data, then runs it
+lib/asimov/
+  bootstrap.sh          # Colours, constants, root and state-path resolution
+  config.sh             # ~/.config/asimov/config
+  data.sh               # Loaders for the data/ entities
+  cache.sh              # ~/.cache/asimov state and the path cache
+  scan.sh               # Which dirs to scan, and the find expression
+  discover.sh           # Spotlight top-up on a cached run
+  exclude.sh            # tmutil addexclusion, with its filters
+  report.sh             # Usage, size formatting, run summary
+  prune.sh              # The prune subcommand
+  doctor.sh             # The doctor subcommand
+  main.sh               # Argument parsing and dispatch
+data/
+  sentinels.tsv         # Directory + sentinel pairs
+  fixed-dirs.tsv        # Global tool caches, always excluded
+  skip-paths.tsv        # Directories never descended into
 tests/
   sentinels.bats        # Tests for each dependency pattern
   behavior.bats         # Tests for edge cases and general behavior
+  cache.bats            # Tests for the path cache
+  doctor.bats           # Tests for the doctor subcommand
   format.bats           # Unit tests for format_size_kb()
   plist.bats            # Tests for the LaunchAgent plist
   test_helper.bash      # Shared setup/teardown and assertions
@@ -121,13 +141,24 @@ scripts/
 Makefile                # Build targets (test, lint, check, install, uninstall)
 ```
 
+Installed, the three top-level pieces land under one prefix: `<prefix>/bin/asimov`,
+`<prefix>/libexec/asimov/` and `<prefix>/share/asimov/`. The launcher resolves its
+own physical path (through symlinks, as Homebrew creates) and probes for both that
+layout and the repo layout, so `./bin/asimov` works straight from a checkout.
+`ASIMOV_LIB` and `ASIMOV_DATA` override the probe.
+
+**Linting is whole-program.** `make lint` runs `shellcheck -x --source-path=. bin/asimov`,
+which follows the `source` lines into every module. Running shellcheck on a module by
+itself reports false "unused variable" and "referenced but not assigned" warnings,
+because no single module is a complete program.
+
 ## Releasing (maintainers)
 
 **The pipeline, end to end:**
 
 1. **Develop** on a branch → **PR into `main`**. CI (macOS 14 + 15) must pass; commits must be signed.
 2. **Merge** to `main`.
-3. **`make release`** tags `vX.Y.Z` (signed) → GitHub Actions publishes the release + `asimov` binary.
+3. **`make release`** tags `vX.Y.Z` (signed) → GitHub Actions publishes the release + the `asimov-X.Y.Z.tar.gz` asset.
 4. **Homebrew** autobumps `brew install asimov` on its own (~3h later). Nothing to do.
 
 Version = SemVer: new feature → **minor**, bug fix → **patch**. Pre-releases: `make release-beta` (GitHub pre-release; Homebrew ignores it). Details below.

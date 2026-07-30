@@ -1,0 +1,96 @@
+# Sentinel entity — a dependency directory is excluded only when its sentinel
+# file exists alongside it.
+#
+# Fields (tab-separated):
+#   dir         directory name to exclude
+#   sentinel    file that must exist in the same parent directory
+#               (glob metacharacters are allowed, e.g. *.xcodeproj)
+#   ecosystem   language or tool family, lowercase, no spaces
+#   note        free text, optional
+#
+# Blank lines and lines starting with # are ignored. Keep this file sorted by
+# ecosystem, then dir, so related entries stay together.
+
+# dir	sentinel	ecosystem	note
+bin	*.csproj	dotnet	C# build output
+obj	*.csproj	dotnet	C# intermediate output
+bin	*.fsproj	dotnet	F# build output
+obj	*.fsproj	dotnet	F# intermediate output
+
+.cpcache	deps.edn	clojure	Clojure CLI classpath cache
+target	deps.edn	clojure	Clojure CLI
+target	project.clj	clojure	Leiningen
+.shadow-cljs	shadow-cljs.edn	clojure	ClojureScript
+
+.dart_tool	pubspec.yaml	dart	Flutter
+.packages	pubspec.yaml	dart	Pub
+build	pubspec.yaml	dart	Flutter build output
+
+.build	mix.exs	elixir	Mix build files
+_build	mix.exs	elixir	Mix build output
+deps	mix.exs	elixir	Mix dependencies
+
+elm-stuff	elm.json	elm	Elm packages
+
+.godot	project.godot	godot	Godot 4 editor cache
+
+vendor	go.mod	go	Go modules
+
+.gradle	build.gradle	gradle
+.gradle	build.gradle.kts	gradle	Kotlin Script
+build	build.gradle	gradle	build output
+build	build.gradle.kts	gradle	Kotlin Script build output
+
+.stack-work	stack.yaml	haskell	Stack
+
+.angular	angular.json	javascript	Angular
+.next	package.json	javascript	Next.js
+.nuxt	package.json	javascript	Nuxt
+.parcel-cache	package.json	javascript	Parcel v2 cache
+.svelte-kit	svelte.config.js	javascript	SvelteKit
+.turbo	turbo.json	javascript	Turborepo
+.yarn	.yarnrc.yml	javascript	Yarn Berry cache
+bower_components	bower.json	javascript	Bower
+cache	workspace.yml	javascript	moonrepo task cache (.moon/cache)
+node_modules	package.json	javascript	npm, Yarn
+
+target	pom.xml	java	Maven
+
+_build	dune-project	ocaml	Dune
+
+vendor	composer.json	php	Composer
+
+.nox	noxfile.py	python	Nox
+.tox	tox.ini	python	Tox
+.venv	pyproject.toml	python	virtualenv
+.venv	requirements.txt	python	virtualenv
+__pypackages__	pyproject.toml	python	PEP 582/PDM
+build	setup.py	python
+dist	setup.py	python	PyPI publishing
+venv	pyproject.toml	python	virtualenv
+venv	requirements.txt	python	virtualenv
+
+renv	renv.lock	r	renv
+
+vendor	Gemfile	ruby	Bundler
+
+target	Cargo.toml	rust	Cargo
+
+target	build.sbt	scala	Sbt
+target	plugins.sbt	scala	Sbt plugins
+
+.build	Package.swift	swift	Swift Package Manager
+Carthage	Cartfile	swift	Carthage
+DerivedData	*.xcodeproj	swift	Xcode DerivedData
+Pods	Podfile	swift	CocoaPods
+
+.terraform	.terraform.lock.hcl	terraform	providers/modules
+.terraform.d	.terraformrc	terraform	plugin cache
+.terragrunt-cache	terragrunt.hcl	terraform	Terragrunt
+
+cdk.out	cdk.json	aws	AWS CDK
+.direnv	.envrc	shell	direnv
+.vagrant	Vagrantfile	vagrant
+
+.zig-cache	build.zig	zig	build cache
+zig-out	build.zig	zig	build output

@@ -37,10 +37,20 @@ jobs:
           NOTES_FILE=$(mktemp)
           awk '/^## \['"$BASE_VERSION"'\]/{found=1; next} found && /^## /{exit} found{print}' CHANGELOG.md > "$NOTES_FILE"
 
+          # Asimov is a launcher plus a library and data files, so the asset is a
+          # tarball of all three rather than a single script. It unpacks to
+          # asimov-<version>/{bin,lib,data} and installs with scripts/install.sh.
+          STAGE="asimov-${FULL_VERSION}"
+          mkdir -p "$STAGE"
+          cp -a bin lib data scripts LICENSE README.md CHANGELOG.md \
+            com.stevegrunwell.asimov.plist "$STAGE/"
+          TARBALL="${STAGE}.tar.gz"
+          tar -czf "$TARBALL" "$STAGE"
+
           gh release create "$TAG" \
             --title "Asimov $TAG" \
             --notes-file "$NOTES_FILE" \
             $PRERELEASE_FLAG \
-            asimov
+            "$TARBALL"
 
-          rm -f "$NOTES_FILE"
+          rm -rf "$NOTES_FILE" "$STAGE" "$TARBALL"

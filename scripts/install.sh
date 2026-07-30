@@ -8,12 +8,15 @@
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/vars"
 
-# Verify that Asimov is executable.
-chmod +x "${DIR}/asimov"
+# Verify that the launcher is executable.
+chmod +x "${DIR}/bin/asimov"
 
-# Copy Asimov into /usr/local/bin.
+# Copy the launcher, the library, and the data files under the prefix.
 printf '\033[0;36mInstalling to %s\033[0m\n' "${BIN}"
-cp -a "${DIR}/asimov" "${BIN}"
+mkdir -p "$(dirname "${BIN}")" "${LIBEXEC}" "${SHARE}"
+cp -a "${DIR}/bin/asimov" "${BIN}"
+cp -a "${DIR}/lib/asimov/." "${LIBEXEC}/"
+cp -a "${DIR}/data/." "${SHARE}/"
 
 if [[ "${NAME}" != "asimov" ]]; then
   printf '\n\033[0;32mInstalled as %s (skipping launchd — plist targets the default name).\033[0m\n' "${BIN}"

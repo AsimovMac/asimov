@@ -7,9 +7,17 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+
 - `[skip_paths]` config section: name directories that Asimov should never search, alongside the built-in `~/.Trash` and `~/Library`. Thanks [@lunaluxie](https://github.com/lunaluxie)!
 
+- `asimov doctor` now checks the data files and reports how many sentinels and fixed directories are loaded, so an incomplete install is diagnosed rather than just failing.
+
 ### Changed
+
+- **Asimov is no longer a single file.** The launcher lives at `bin/asimov`, the logic in `lib/asimov/*.sh`, and the directory lists in `data/*.tsv`. Installed, those become `<prefix>/bin/asimov`, `<prefix>/libexec/asimov/` and `<prefix>/share/asimov/`. Behaviour is unchanged; every existing test passes untouched.
+- Sentinels, fixed directories and skip paths are now tab-separated data files instead of bash arrays. Each record carries its ecosystem or owning tool as a real field, so adding a pattern is a one-line edit with no bash syntax involved.
+- The remote installer (`scripts/install-remote.sh`) downloads a tarball instead of a single script, and installs under `~/.local`.
+- Release assets are now `asimov-<version>.tar.gz` rather than a bare `asimov` script.
 
 ### Fixed
 
