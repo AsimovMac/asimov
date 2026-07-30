@@ -1,0 +1,13 @@
+# Skip-path entity — directories Asimov never descends into and never touches
+# the Time Machine exclusions for. Skipping them is also a large speedup.
+#
+# Fields (tab-separated):
+#   path    relative to the scan root (the home directory). The loader prefixes
+#           $ASIMOV_ROOT.
+#   reason  why it is skipped
+#
+# Blank lines and lines starting with # are ignored.
+
+# path	reason
+.Trash	deleted files are not worth excluding, and the path churns
+Library	macOS already excludes the parts of it that matter

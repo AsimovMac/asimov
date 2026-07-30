@@ -1,4 +1,12 @@
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 NAME="${NAME:-asimov}"
-BIN="/usr/local/bin/${NAME}"
+PREFIX="${PREFIX:-/usr/local}"
+BIN="${PREFIX}/bin/${NAME}"
+
+# Asimov is a launcher plus a library and a set of data files. The launcher finds
+# the other two by walking up from its own physical path, so all three have to land
+# under one prefix: <prefix>/bin, <prefix>/libexec/asimov, <prefix>/share/asimov.
+LIBEXEC="${PREFIX}/libexec/asimov"
+SHARE="${PREFIX}/share/asimov"
+
 PLIST="com.stevegrunwell.asimov.plist"

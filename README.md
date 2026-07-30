@@ -30,7 +30,7 @@ brew services start asimov
 curl -fsSL https://raw.githubusercontent.com/AsimovMac/asimov/main/scripts/install-remote.sh | bash
 ```
 
-Installs `v0.10.0` to `~/.local/bin`. Found a bug? [Open an issue](https://github.com/AsimovMac/asimov/issues).
+Installs to `~/.local` (`bin/asimov`, plus its library and data files under `libexec/` and `share/`). Found a bug? [Open an issue](https://github.com/AsimovMac/asimov/issues).
 
 ### Quick start
 
@@ -286,10 +286,10 @@ cd asimov && make install
 ## Uninstall
 
 ```sh
-rm ~/.local/bin/asimov                                    # curl install
-brew uninstall asimov                                     # Homebrew
-launchctl bootout gui/$(id -u)/com.stevegrunwell.asimov   # stop schedule
-make uninstall                                            # source install
+rm -rf ~/.local/bin/asimov ~/.local/libexec/asimov ~/.local/share/asimov   # curl install
+brew uninstall asimov                                                      # Homebrew
+launchctl bootout gui/$(id -u)/com.stevegrunwell.asimov                    # stop schedule
+make uninstall                                                             # source install
 ```
 
 ## Upgrading

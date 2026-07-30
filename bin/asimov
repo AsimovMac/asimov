@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -Eeu -o pipefail
+
+# Look through the local filesystem and exclude development dependencies
+# from Apple Time Machine backups.
+#
+# Since these files can be restored easily via their respective installation
+# tools, there's no reason to waste time/bandwidth on backing them up.
+#
+# To retrieve a full list of excluded files, you may run:
+#
+#   sudo mdfind "com_apple_backup_excludeItem = 'com.apple.backupd'"
+#
+# For a full explanation, please see https://apple.stackexchange.com/a/25833/206772
+#
+# This file is the launcher. It resolves where the library and data live, sources
+# them, and hands off to asimov_main. The logic is in lib/asimov/*.sh; the
+# directory and cache lists are data files under data/.
+#
+# @author  Steve Grunwell
+# @license MIT
+
+# Restrict permissions on all files/dirs we create (mktemp temp files, cache dir).
+# Temp files contain the full home-directory layout, so keep them private (0600/0700).
+umask 077
+
+# Keep ASIMOV_VERSION in sync with CHANGELOG and package managers (e.g. Homebrew).
+# It lives in this file, not in a module, because `asimov doctor` reads the version
+# of other installs by grepping their launcher rather than executing them.
+readonly ASIMOV_VERSION='0.11.0'
+
+# Resolve this script to its physical path, following symlinks. Homebrew links
+# bin/asimov into the cellar, so the library sits next to the *target*, not the link.
+asimov_resolve_self() {
+    local path="$1" dir base target
+    dir="$(cd "$(dirname "$path")" && pwd -P)"
+    base="$(basename "$path")"
+    while [[ -L "${dir}/${base}" ]]; do
+        target="$(readlink "${dir}/${base}")"
+        case "$target" in
+            /*) dir="$(cd "$(dirname "$target")" && pwd -P)" ;;
+            *)  dir="$(cd "${dir}/$(dirname "$target")" && pwd -P)" ;;
+        esac
+        base="$(basename "$target")"
+    done
+    printf '%s/%s\n' "$dir" "$base"
+}
+
+ASIMOV_SELF="$(asimov_resolve_self "${BASH_SOURCE[0]}")"
+readonly ASIMOV_SELF
+asimov_prefix="$(dirname "$(dirname "$ASIMOV_SELF")")"
+
+# Two layouts are supported, probed in this order:
+#
+#   installed   <prefix>/libexec/asimov  +  <prefix>/share/asimov
+#   repo        <repo>/lib/asimov        +  <repo>/data
+#
+# ASIMOV_LIB and ASIMOV_DATA override both, which is how the test suite points at
+# a fixture data directory.
+if [[ -z "${ASIMOV_LIB:-}" || -z "${ASIMOV_DATA:-}" ]]; then
+    if [[ -d "${asimov_prefix}/libexec/asimov" ]]; then
+        : "${ASIMOV_LIB:="${asimov_prefix}/libexec/asimov"}"
+        : "${ASIMOV_DATA:="${asimov_prefix}/share/asimov"}"
+    elif [[ -d "${asimov_prefix}/lib/asimov" ]]; then
+        : "${ASIMOV_LIB:="${asimov_prefix}/lib/asimov"}"
+        : "${ASIMOV_DATA:="${asimov_prefix}/data"}"
+    else
+        echo "asimov: cannot find the asimov library next to ${ASIMOV_SELF}" >&2
+        echo "  Looked for ${asimov_prefix}/libexec/asimov and ${asimov_prefix}/lib/asimov." >&2
+        echo "  This install is incomplete. Reinstall asimov, or set ASIMOV_LIB and ASIMOV_DATA." >&2
+        exit 1
+    fi
+fi
+readonly ASIMOV_LIB ASIMOV_DATA
+unset asimov_prefix
+
+# Preflight: report every missing module at once, by name, rather than dying on
+# the first `source`.
+for asimov_module in bootstrap config data cache scan discover exclude report prune doctor main; do
+    [[ -r "${ASIMOV_LIB}/${asimov_module}.sh" ]] && continue
+    echo "asimov: missing module: ${ASIMOV_LIB}/${asimov_module}.sh" >&2
+    asimov_missing=1
+done
+if [[ -n "${asimov_missing:-}" ]]; then
+    echo "  This install is incomplete. Reinstall asimov, or set ASIMOV_LIB." >&2
+    exit 1
+fi
+unset asimov_module
+
+# Sourced in dependency order. Every module defines functions and constants only;
+# nothing runs until asimov_main.
+#
+# Written out one per line, not looped, so `shellcheck -x bin/asimov` can follow
+# each source and check the whole program as a single unit. A loop hides the
+# module bodies from it, and cross-module variables then all look undefined.
+#
+# shellcheck source=lib/asimov/bootstrap.sh
+source "${ASIMOV_LIB}/bootstrap.sh"
+# shellcheck source=lib/asimov/config.sh
+source "${ASIMOV_LIB}/config.sh"
+# shellcheck source=lib/asimov/data.sh
+source "${ASIMOV_LIB}/data.sh"
+# shellcheck source=lib/asimov/cache.sh
+source "${ASIMOV_LIB}/cache.sh"
+# shellcheck source=lib/asimov/scan.sh
+source "${ASIMOV_LIB}/scan.sh"
+# shellcheck source=lib/asimov/discover.sh
+source "${ASIMOV_LIB}/discover.sh"
+# shellcheck source=lib/asimov/exclude.sh
+source "${ASIMOV_LIB}/exclude.sh"
+# shellcheck source=lib/asimov/report.sh
+source "${ASIMOV_LIB}/report.sh"
+# shellcheck source=lib/asimov/prune.sh
+source "${ASIMOV_LIB}/prune.sh"
+# shellcheck source=lib/asimov/doctor.sh
+source "${ASIMOV_LIB}/doctor.sh"
+# shellcheck source=lib/asimov/main.sh
+source "${ASIMOV_LIB}/main.sh"
+
+asimov_main "$@"

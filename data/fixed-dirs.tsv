@@ -1,0 +1,22 @@
+# Fixed-directory entity — global tool caches, always excluded when they exist.
+# No sentinel is involved. These are only processed when the config file opts in
+# with `[fixed_dirs] enabled = true`.
+#
+# Fields (tab-separated):
+#   path    relative to the scan root (the home directory). Never write ~ or an
+#           absolute path: the loader prefixes $ASIMOV_ROOT.
+#   tool    the tool that owns the cache, lowercase
+#   note    free text, optional
+#
+# Blank lines and lines starting with # are ignored.
+
+# path	tool	note
+.cache	xdg	XDG cache directory
+.gradle/caches	gradle	download cache
+.gradle/wrapper	gradle	wrapper distributions
+.kube/cache	kubernetes	API cache
+.kube/http-cache	kubernetes	HTTP cache
+.m2/repository	maven	local repository
+.npm/_cacache	npm	content-addressable cache
+.nuget/packages	nuget	global packages
+go/pkg/mod	go	module cache (0555 inside; exclude as a whole)
