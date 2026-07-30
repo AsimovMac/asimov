@@ -8,6 +8,16 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.12.0] — 2026-07-30
+
+### Added
+
 - Vagrant boxes (`~/.vagrant.d/boxes`) is now one of the built-in global caches, excluded
   when you opt in with `[fixed_dirs] enabled = true`
   ([#117](https://github.com/AsimovMac/asimov/issues/117)).
@@ -22,6 +32,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Sentinels, fixed directories and skip paths are now tab-separated data files instead of bash arrays. Each record carries its ecosystem or owning tool as a real field, so adding a pattern is a one-line edit with no bash syntax involved.
 - The remote installer (`scripts/install-remote.sh`) downloads a tarball instead of a single script, and installs under `~/.local`.
 - Release assets are now `asimov-<version>.tar.gz` rather than a bare `asimov` script.
+- The Homebrew formula installs the three pieces under one prefix (`bin/asimov`,
+  `libexec/asimov/`, `share/asimov/`) instead of a single script. `brew install asimov`
+  and `brew services start asimov` are unchanged.
 
 ### Fixed
 
@@ -372,7 +385,8 @@ v0.8.0, after a `v0.9.0-beta.1`/`beta.2` testing round.
 Initial public release.
 
 
-[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.11.0...main
+[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.12.0...main
+[0.12.0]: https://github.com/AsimovMac/asimov/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/AsimovMac/asimov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/AsimovMac/asimov/compare/v0.8.0...v0.10.0
 [0.8.0]: https://github.com/django23/asimov/compare/v0.7.0...v0.8.0

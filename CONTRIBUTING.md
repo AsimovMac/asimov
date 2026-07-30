@@ -186,7 +186,26 @@ make release                                 # signed tag + push (Actions publis
 
 **Homebrew is homebrew-core, and it updates itself.** `asimov` is on Homebrew's autobump list, so BrewTestBot opens the version-bump PR automatically (~3h after a GitHub release) — there is **nothing to do** for a normal version release. Attempting `brew bump-formula-pr` for a version will fail with an autobump-exclusion error.
 
-Only *metadata* changes (homepage, url org, license) need a manual PR against [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/a/asimov.rb) — edit the formula, `brew style Formula/a/asimov.rb`, then open the PR. The old `django23/homebrew-tap` is archived and no longer used.
+Only *metadata* changes (homepage, url org, license) and changes to the **install stanza**
+need a manual PR against [homebrew-core](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/a/asimov.rb) — edit the formula, `brew style Formula/a/asimov.rb`, then open the PR. The old `django23/homebrew-tap` is archived and no longer used.
+
+**v0.12.0 needs a manual formula PR.** Up to v0.11.0 the repo had a single top-level
+`asimov` script and the formula was `bin.install buildpath/"asimov"`. That file no longer
+exists, so the autobump PR would fail to build. The install stanza has to move to the
+three-piece layout in the same PR as the version bump:
+
+```ruby
+def install
+  bin.install "bin/asimov"
+  libexec.install "lib/asimov"
+  pkgshare.install Dir["data/*"]
+end
+```
+
+`libexec/asimov` and `share/asimov` land next to `bin/asimov` inside the cellar, and the
+launcher resolves the `bin` symlink to its physical path before probing, so it finds both.
+Open this PR yourself as soon as the GitHub release exists rather than waiting for
+BrewTestBot; if the bot gets there first, push the install-stanza fix onto its PR.
 
 If `gh pr create` fails with `Head sha can't be blank` (GraphQL indexing lag), retry once or fall back to the REST API:
 
