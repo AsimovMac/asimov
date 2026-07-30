@@ -3,6 +3,7 @@
 .idea
 .vscode
 .cursor
+.claude
 CLAUDE.md
 docs/plans/
 docs/triage/
