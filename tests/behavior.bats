@@ -120,6 +120,46 @@ load test_helper
   [[ "$(count_exclusions)" -eq 0 ]]
 }
 
+@test "skips directories given in [skip_paths] config" {
+  write_config "[skip_paths]
+extra = ~/Music"
+  create_project "Music/Code/First-Project" "composer.json" "vendor"
+  run_asimov
+  refute_excluded "${HOME}/Music/Code/First-Project/vendor"
+  [[ "$(count_exclusions)" -eq 0 ]]
+}
+
+@test "excludes the same project when [skip_paths] is absent" {
+  create_project "Music/Code/First-Project" "composer.json" "vendor"
+  run_asimov
+  assert_excluded "${HOME}/Music/Code/First-Project/vendor"
+}
+
+@test "[skip_paths] accepts several entries" {
+  write_config "[skip_paths]
+extra = ~/Music
+extra = ~/Pictures"
+  create_project "Music/First-Project" "composer.json" "vendor"
+  create_project "Pictures/Second-Project" "package.json" "node_modules"
+  create_project "Code/Third-Project" "package.json" "node_modules"
+  run_asimov
+  refute_excluded "${HOME}/Music/First-Project/vendor"
+  refute_excluded "${HOME}/Pictures/Second-Project/node_modules"
+  assert_excluded "${HOME}/Code/Third-Project/node_modules"
+}
+
+@test "[skip_paths] does not suppress fixed directories inside it" {
+  write_config "[fixed_dirs]
+enabled = true
+extra = ~/Music/build-cache
+
+[skip_paths]
+extra = ~/Music"
+  mkdir -p "${HOME}/Music/build-cache"
+  run_asimov
+  assert_excluded "${HOME}/Music/build-cache"
+}
+
 # =============================================================================
 # Nested project handling
 # =============================================================================
