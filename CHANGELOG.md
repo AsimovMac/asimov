@@ -32,6 +32,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Sentinels, fixed directories and skip paths are now tab-separated data files instead of bash arrays. Each record carries its ecosystem or owning tool as a real field, so adding a pattern is a one-line edit with no bash syntax involved.
 - The remote installer (`scripts/install-remote.sh`) downloads a tarball instead of a single script, and installs under `~/.local`.
 - Release assets are now `asimov-<version>.tar.gz` rather than a bare `asimov` script.
+- The Homebrew formula installs the three pieces under one prefix (`bin/asimov`,
+  `libexec/asimov/`, `share/asimov/`) instead of a single script. `brew install asimov`
+  and `brew services start asimov` are unchanged.
 
 ### Fixed
 

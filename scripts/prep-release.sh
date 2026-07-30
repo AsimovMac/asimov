@@ -96,6 +96,5 @@ Next steps:
   gh pr merge <PR#> --squash --delete-branch
   git checkout main && git pull --ff-only
   make release
-  make ship-formula
   make verify-release
 EOF
