@@ -42,7 +42,7 @@ jobs:
           # asimov-<version>/{bin,lib,data} and installs with scripts/install.sh.
           STAGE="asimov-${FULL_VERSION}"
           mkdir -p "$STAGE"
-          cp -a bin lib data scripts LICENSE README.md CHANGELOG.md \
+          cp -a bin lib data scripts LICENSE.txt README.md CHANGELOG.md UPGRADING.md \
             com.stevegrunwell.asimov.plist "$STAGE/"
           TARBALL="${STAGE}.tar.gz"
           tar -czf "$TARBALL" "$STAGE"
