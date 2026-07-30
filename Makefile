@@ -14,7 +14,7 @@ help: ## Show this help
 	@grep -E '(^[a-zA-Z0-9_-]+:.*?##.*$$)|(^##)' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}{printf "\033[32m%-30s\033[0m %s\n", $$1, $$2}' | sed -e 's/\[32m##/[33m/'
 
 version: ## Print asimov version
-	@./asimov --version
+	@./bin/asimov --version
 
 exclusions: ## List all paths excluded from Time Machine
 	@sudo mdfind "com_apple_backup_excludeItem = 'com.apple.backupd'"
@@ -38,7 +38,8 @@ test-system-bash: ## Run Bats tests under the macOS system bash (3.2), as shippe
 	@$(MAKE) --no-print-directory test BASH_BIN=/bin/bash
 
 lint: ## Run Shellcheck on all shell scripts
-	@shellcheck asimov scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh scripts/test.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind tests/bin/launchctl
+	@shellcheck -x --source-path=. bin/asimov
+	@shellcheck scripts/install.sh scripts/install-remote.sh scripts/uninstall.sh scripts/prep-release.sh scripts/test.sh tests/test_helper.bash tests/bin/run-tests.sh tests/bin/tmutil tests/bin/mdfind tests/bin/launchctl
 
 check: test lint ## Run tests and linting
 
@@ -49,7 +50,7 @@ bench:
 	@bash -c 'time HOME="$(CURDIR)/tests/fixture" /tmp/asimov-v042 --dry-run'
 	@echo ""
 	@echo "=== v0.5.x (directory=tests/fixture) ==="
-	@bash -c 'time HOME="$(CURDIR)/tests/fixture" ./asimov --dry-run "$(CURDIR)/tests/fixture"'
+	@bash -c 'time HOME="$(CURDIR)/tests/fixture" ./bin/asimov --dry-run "$(CURDIR)/tests/fixture"'
 	@rm -f /tmp/asimov-v042
 
 ## bench-home: Compare dry-run scan timing: current vs v0.4.2, against real home directory
@@ -59,7 +60,7 @@ bench-home:
 	@bash -c 'time /tmp/asimov-v042 --dry-run'
 	@echo ""
 	@echo "=== v0.5.x (full home) ==="
-	@bash -c 'time ./asimov --dry-run'
+	@bash -c 'time ./bin/asimov --dry-run'
 	@rm -f /tmp/asimov-v042
 
 
@@ -86,7 +87,7 @@ release: check ## Tag and push a stable release — GitHub Actions will create t
 	if [ -n "$$(git status --porcelain)" ]; then echo "error: working tree not clean"; exit 1; fi; \
 	BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
 	if [ "$$BRANCH" != "main" ]; then echo "error: releases must be tagged from main (on $$BRANCH)"; exit 1; fi; \
-	VERSION=$$(./asimov --version); \
+	VERSION=$$(./bin/asimov --version); \
 	TAG="v$$VERSION"; \
 	if git rev-parse "$$TAG" >/dev/null 2>&1; then echo "error: $$TAG already exists"; exit 1; fi; \
 	echo "Tagging $$TAG (signed)..."; \
@@ -98,7 +99,7 @@ release: check ## Tag and push a stable release — GitHub Actions will create t
 release-beta: check ## Tag and push a beta pre-release — GitHub Actions will create the pre-release
 	@set -e; \
 	if [ -n "$$(git status --porcelain)" ]; then echo "error: working tree not clean"; exit 1; fi; \
-	VERSION=$$(./asimov --version); \
+	VERSION=$$(./bin/asimov --version); \
 	BETA_NUM=1; \
 	while git tag | grep -q "^v$$VERSION-beta\.$$BETA_NUM$$"; do \
 	  BETA_NUM=$$((BETA_NUM + 1)); \

@@ -29,9 +29,9 @@ setup() {
   # interpreter so CI can run the whole suite under each, and Bats keeps running
   # under its own bash either way.
   if [[ -n "${ASIMOV_TEST_BASH:-}" ]]; then
-    ASIMOV_CMD=("$ASIMOV_TEST_BASH" "${BATS_TEST_DIRNAME}/../asimov")
+    ASIMOV_CMD=("$ASIMOV_TEST_BASH" "${BATS_TEST_DIRNAME}/../bin/asimov")
   else
-    ASIMOV_CMD=("${BATS_TEST_DIRNAME}/../asimov")
+    ASIMOV_CMD=("${BATS_TEST_DIRNAME}/../bin/asimov")
   fi
 }
 
@@ -191,10 +191,12 @@ refute_failed() {
 }
 
 # Load format_size_kb and its constants for unit testing.
-# Extracts just the constants and function from the main script
-# without executing the rest of the script.
+# The constants live in bootstrap.sh and the function in report.sh; both modules
+# define nothing else that runs, so they can be sourced directly.
 load_format_size_kb() {
-    eval "$(awk '/^readonly ASIMOV_KB_PER/; /^format_size_kb\(\)/,/^}/' "${BATS_TEST_DIRNAME}/../asimov")"
+    local lib="${BATS_TEST_DIRNAME}/../lib/asimov"
+    eval "$(awk '/^readonly ASIMOV_KB_PER/' "${lib}/bootstrap.sh")"
+    eval "$(awk '/^format_size_kb\(\)/,/^}/' "${lib}/report.sh")"
 }
 
 # Write a Time Machine preferences fixture holding a sticky exclusion list
