@@ -8,6 +8,17 @@ setup() {
   export HOME="$TEST_TEMP_DIR"
   export PATH="${BATS_TEST_DIRNAME}/bin:$PATH"
 
+  # Drop any real asimov install from PATH. `asimov doctor` inspects PATH, so
+  # without this the suite would report a different result on every machine
+  # depending on whether the developer has asimov installed, and which version.
+  local clean_path="" path_dir
+  while IFS= read -r path_dir; do
+    [[ -n "$path_dir" ]] || continue
+    [[ -x "${path_dir}/asimov" ]] && continue
+    clean_path="${clean_path:+${clean_path}:}${path_dir}"
+  done < <(printf '%s\n' "${PATH//:/$'\n'}")
+  export PATH="$clean_path"
+
   ASIMOV_TEST_EXCLUSIONS="${TEST_TEMP_DIR}/.exclusions"
   export ASIMOV_TEST_EXCLUSIONS
   touch "$ASIMOV_TEST_EXCLUSIONS"
@@ -200,4 +211,58 @@ write_sticky_exclusions() {
         /usr/libexec/PlistBuddy -c "Add :SkipPaths: string ${path}" "$plist" >/dev/null
     done
     export ASIMOV_TM_PLIST="$plist"
+}
+
+# Write a LaunchAgent plist into the (temp) home, as an install would.
+#
+# Usage: write_launch_agent <label> [program_path]
+#
+# Example: write_launch_agent "homebrew.mxcl.asimov" "/opt/homebrew/bin/asimov"
+write_launch_agent() {
+    local label="$1"
+    local program="${2:-/usr/local/bin/asimov}"
+    local dir="${HOME}/Library/LaunchAgents"
+    mkdir -p "$dir"
+    cat > "${dir}/${label}.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${label}</string>
+    <key>Program</key>
+    <string>${program}</string>
+    <key>StartInterval</key>
+    <integer>86400</integer>
+</dict>
+</plist>
+PLIST
+}
+
+# Mark a LaunchAgent label as loaded for the mock launchctl.
+#
+# Usage: set_loaded_agents "com.stevegrunwell.asimov" "homebrew.mxcl.asimov"
+set_loaded_agents() {
+    ASIMOV_TEST_LAUNCHCTL_LOADED="$*"
+    export ASIMOV_TEST_LAUNCHCTL_LOADED
+}
+
+# Put a fake `asimov` executable earlier on PATH than the script under test,
+# to simulate a leftover install from an older version shadowing the new one.
+# The stub must never be executed by doctor — it exits 1 loudly if it is.
+#
+# Usage: shadow_asimov_binary <version>   (echoes the directory it created)
+shadow_asimov_binary() {
+    local version="$1"
+    local dir="${TEST_TEMP_DIR}/shadow-bin"
+    mkdir -p "$dir"
+    cat > "${dir}/asimov" <<STUB
+#!/usr/bin/env bash
+# @version ${version}
+echo "STUB WAS EXECUTED" >&2
+exit 1
+STUB
+    chmod +x "${dir}/asimov"
+    export PATH="${dir}:$PATH"
+    echo "$dir"
 }

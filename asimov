@@ -27,11 +27,12 @@ trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP"
 # @license MIT
 
 # Keep ASIMOV_VERSION in sync with CHANGELOG and package managers (e.g. Homebrew).
-readonly ASIMOV_VERSION='0.10.0'
+readonly ASIMOV_VERSION='0.11.0'
 
 print_usage() {
     printf 'Usage: asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [directory]\n'
     printf '       asimov prune [--quiet]\n'
+    printf '       asimov doctor [--quiet]\n'
     printf '\n'
     printf 'Exclude development dependency directories from Time Machine backups.\n'
     printf '\n'
@@ -39,6 +40,9 @@ print_usage() {
     printf '  prune              Report Time Machine exclusions whose directory no longer\n'
     printf '                     exists, and compact Asimov'\''s own cache. Read-only:\n'
     printf '                     it prints the removal command rather than running it\n'
+    printf '  doctor             Check this install for problems: a shadowed binary, a\n'
+    printf '                     leftover schedule, an unreadable cache, a bad config.\n'
+    printf '                     Read-only; exits 1 if it finds anything\n'
     printf '\n'
     printf 'Options:\n'
     printf '  --dry-run          Print what would be excluded without changing Time Machine\n'
@@ -75,10 +79,10 @@ ASIMOV_SCAN_DIR=
 # Subcommands are recognised only as the first argument, so that a directory
 # sharing the name stays reachable as `asimov ./prune`.
 ASIMOV_COMMAND=scan
-if [[ "${1:-}" == "prune" ]]; then
-    ASIMOV_COMMAND=prune
-    shift
-fi
+case "${1:-}" in
+    prune)  ASIMOV_COMMAND=prune;  shift ;;
+    doctor) ASIMOV_COMMAND=doctor; shift ;;
+esac
 readonly ASIMOV_COMMAND
 
 for arg in "$@"; do
@@ -168,6 +172,60 @@ readonly ASIMOV_EXCLUDED_STATE="${ASIMOV_ROOT}/.cache/asimov/excluded"
 readonly ASIMOV_FAILED_STATE="${ASIMOV_ROOT}/.cache/asimov/failed"
 readonly ASIMOV_MDFIND_SEEN="${ASIMOV_ROOT}/.cache/asimov/mdfind_seen"
 readonly ASIMOV_PATH_CACHE="${ASIMOV_ROOT}/.cache/asimov/paths"
+readonly ASIMOV_CACHE_DIR="${ASIMOV_ROOT}/.cache/asimov"
+
+# --- cache resilience ---
+#
+# Every cache file is an optimisation: a run must survive one being unreadable
+# or unwritable rather than aborting. Without these guards a bare `cat` on an
+# unreadable state file fails under `set -Eeu -o pipefail` and kills the whole
+# run, printing nothing but "Permission denied" (see issue #122).
+#
+# The usual cause is a run as root — `sudo asimov`, or a schedule installed as
+# root — leaving root-owned files behind for the next run as the user.
+ASIMOV_CACHE_WARNED=
+
+# Warn once per run that the cache is unusable, and name the fix. Always goes to
+# stderr, including under --quiet: this is a degraded run, not routine chatter.
+warn_unusable_cache() {
+    [[ -n "$ASIMOV_CACHE_WARNED" ]] && return 0
+    ASIMOV_CACHE_WARNED=1
+    printf '! %s is not %s — continuing without the cache.\n' "$1" "$2" >&2
+    printf '  This usually means a previous run as root left root-owned files behind.\n' >&2
+    printf '  To reset it:\n\n    rm -rf %s\n\n' "$ASIMOV_CACHE_DIR" >&2
+    return 0
+}
+
+# True when a state file exists and can be read. A missing file is not an error
+# (there is simply nothing cached yet), so it returns false without warning.
+cache_readable() {
+    [[ -f "$1" ]] || return 1
+    [[ -r "$1" ]] && return 0
+    warn_unusable_cache "$1" "readable"
+    return 1
+}
+
+# True when a state file can be written to, creating it if necessary. An absent
+# file is writable when its directory is.
+cache_writable() {
+    if [[ -e "$1" ]]; then
+        [[ -w "$1" ]] && return 0
+        warn_unusable_cache "$1" "writable"
+        return 1
+    fi
+    [[ -d "$ASIMOV_CACHE_DIR" && -w "$ASIMOV_CACHE_DIR" ]] && return 0
+    [[ -d "$ASIMOV_CACHE_DIR" ]] || return 1   # not created yet; ensure_cache_dir reports
+    warn_unusable_cache "$ASIMOV_CACHE_DIR" "writable"
+    return 1
+}
+
+# Append a line to a state file, skipping silently when it isn't writable.
+# Always returns 0 so callers can use it as the tail of an && list under set -e.
+append_state() {
+    cache_writable "$2" || return 0
+    printf '%s\n' "$1" >> "$2" 2>/dev/null || true
+    return 0
+}
 
 # Time Machine's system preferences, home of the "sticky" path exclusion list
 # (tmutil addexclusion -p). Overridable so tests can point at a fixture.
@@ -221,7 +279,8 @@ read_sticky_exclusions() {
 # Echoes the number of entries removed. This only ever touches Asimov's own
 # file under ~/.cache/asimov.
 prune_path_cache() {
-    [[ -f "$ASIMOV_PATH_CACHE" ]] || { echo 0; return 0; }
+    cache_readable "$ASIMOV_PATH_CACHE" || { echo 0; return 0; }
+    cache_writable "$ASIMOV_PATH_CACHE" || { echo 0; return 0; }
 
     # A brace group with a redirect runs in the current shell, so the counters
     # below survive the loop.
@@ -296,6 +355,349 @@ cmd_prune() {
 if [[ "$ASIMOV_COMMAND" == "prune" ]]; then
     cmd_prune
     exit 0
+fi
+
+# --- doctor ---
+#
+# Diagnoses an install rather than changing it. The failure modes it looks for
+# are the ones people hit coming from v0.3.0 (issue #122): an old binary still
+# first on PATH, a LaunchAgent pointing at a Homebrew cellar that no longer
+# exists, and a cache left root-owned by a run as root.
+#
+# Two rules keep it safe to run at any point in a migration:
+#   - It never writes anything. Fixes are printed, never applied.
+#   - It never executes another asimov binary it finds. v0.3.0 parses no
+#     arguments at all, so running it to ask its version would start a real
+#     scan; versions are read out of the file instead.
+
+# The label a current install schedules itself under. Everything else in the
+# list below is a leftover to be removed, never re-loaded.
+readonly ASIMOV_CURRENT_LABEL='com.stevegrunwell.asimov'
+
+# Every known LaunchAgent label Asimov has ever shipped under, plus Homebrew's.
+readonly ASIMOV_DOCTOR_LABELS=(
+    'com.stevegrunwell.asimov'   # current, and the original
+    'com.django23.asimov'        # the v0.4.x–v0.8.0 fork
+    'homebrew.mxcl.asimov'       # brew services
+)
+
+ASIMOV_DOCTOR_PROBLEMS=0
+
+doctor_heading() {
+    [[ -n "$ASIMOV_QUIET" ]] && return 0
+    printf '\n%s%s%s\n' "$ASIMOV_COLOR_INFO" "$1" "$ASIMOV_COLOR_RESET"
+    return 0
+}
+
+doctor_ok() {
+    [[ -n "$ASIMOV_QUIET" ]] && return 0
+    printf '  %s✓%s %s\n' "$ASIMOV_COLOR_SUCCESS" "$ASIMOV_COLOR_RESET" "$1"
+    return 0
+}
+
+doctor_note() {
+    [[ -n "$ASIMOV_QUIET" ]] && return 0
+    printf '  %s·%s %s\n' "$ASIMOV_COLOR_DIM" "$ASIMOV_COLOR_RESET" "$1"
+    return 0
+}
+
+# Problems print even under --quiet: a silent doctor that found something is
+# worse than useless in a cron job.
+doctor_problem() {
+    ASIMOV_DOCTOR_PROBLEMS=$((ASIMOV_DOCTOR_PROBLEMS + 1))
+    printf '  ✗ %s\n' "$1"
+    return 0
+}
+
+# Print a command the user can copy to fix the problem just reported.
+doctor_fix() {
+    printf '      %s%s%s\n' "$ASIMOV_COLOR_DIM" "$1" "$ASIMOV_COLOR_RESET"
+    return 0
+}
+
+# Resolve a path to its physical location, symlinks and all. Homebrew installs
+# asimov as a symlink into the cellar, so comparing raw paths would report a
+# shadow that isn't there.
+doctor_realpath() {
+    local path="$1" dir base
+    dir="$(cd "$(dirname "$path")" 2>/dev/null && pwd -P)" || { printf '%s\n' "$path"; return 0; }
+    base="$(basename "$path")"
+    while [[ -L "${dir}/${base}" ]]; do
+        local target
+        target="$(readlink "${dir}/${base}")"
+        case "$target" in
+            /*) dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || break ;;
+            *)  dir="$(cd "$dir" && cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || break ;;
+        esac
+        base="$(basename "$target")"
+    done
+    printf '%s/%s\n' "$dir" "$base"
+}
+
+# Read a version out of an asimov script without running it. Handles both the
+# current `readonly ASIMOV_VERSION='x'` and v0.3.0's `# @version x` header.
+doctor_file_version() {
+    local file="$1" line
+    line="$(grep -m1 -E "^readonly ASIMOV_VERSION=|^# @version " "$file" 2>/dev/null || true)"
+    [[ -n "$line" ]] || { printf 'unknown\n'; return 0; }
+    line="${line##*@version }"
+    line="${line##*=}"
+    line="${line//\'/}"
+    line="${line//\"/}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    printf '%s\n' "${line:-unknown}"
+}
+
+# Every `asimov` on PATH, in PATH order, deduplicated by physical path.
+doctor_path_binaries() {
+    local dir candidate resolved seen=""
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] || continue
+        candidate="${dir}/asimov"
+        [[ -x "$candidate" && ! -d "$candidate" ]] || continue
+        resolved="$(doctor_realpath "$candidate")"
+        case "$seen" in
+            *"|${resolved}|"*) continue ;;
+        esac
+        seen="${seen}|${resolved}|"
+        printf '%s\n' "$resolved"
+    done < <(printf '%s\n' "${PATH//:/$'\n'}")
+}
+
+doctor_check_install() {
+    doctor_heading 'Install'
+
+    local running
+    running="$(doctor_realpath "${BASH_SOURCE[0]}")"
+    doctor_ok "asimov ${ASIMOV_VERSION} (${running})"
+
+    local -a found=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && found+=("$line")
+    done < <(doctor_path_binaries)
+
+    if [[ ${#found[@]} -eq 0 ]]; then
+        doctor_note "no asimov on PATH — you are running it by path"
+        return 0
+    fi
+
+    local first="${found[0]}"
+    if [[ "$first" != "$running" ]]; then
+        doctor_problem "typing 'asimov' runs a different binary — this one is shadowed"
+        doctor_fix "${first}  (version $(doctor_file_version "$first"))"
+        doctor_fix "Remove the one you don't want, or fix the order of PATH."
+    else
+        doctor_ok "'asimov' on PATH is this one"
+    fi
+
+    local other
+    for other in "${found[@]}"; do
+        [[ "$other" == "$first" ]] && continue
+        doctor_note "also installed: ${other} (version $(doctor_file_version "$other"))"
+    done
+    return 0
+}
+
+doctor_check_schedule() {
+    doctor_heading 'Schedule'
+
+    local agents_dir="${ASIMOV_ROOT}/Library/LaunchAgents"
+    local label plist program active=0
+
+    for label in "${ASIMOV_DOCTOR_LABELS[@]}"; do
+        plist="${agents_dir}/${label}.plist"
+        [[ -f "$plist" ]] || continue
+        active=$((active + 1))
+
+        program="$(plutil -extract Program raw "$plist" 2>/dev/null || true)"
+        if [[ -n "$program" && ! -x "$program" ]]; then
+            doctor_problem "${label}: its program ${program} no longer exists"
+            doctor_fix "launchctl bootout gui/\$(id -u)/${label}"
+            doctor_fix "rm ${plist}"
+            continue
+        fi
+
+        if launchctl list "$label" >/dev/null 2>&1; then
+            doctor_ok "${label} — loaded, runs daily"
+        elif [[ "$label" == "$ASIMOV_CURRENT_LABEL" ]]; then
+            doctor_problem "${label}: installed but not loaded, so it never runs"
+            doctor_fix "launchctl bootstrap gui/\$(id -u) ${plist}"
+        else
+            # A label we no longer ship, sitting unloaded: a leftover from an
+            # older install. Loading it is never the right advice.
+            doctor_problem "${label}: leftover from an older install, not loaded"
+            doctor_fix "rm ${plist}"
+        fi
+    done
+
+    if [[ "$active" -eq 0 ]]; then
+        doctor_note "not scheduled — Asimov only runs when you run it"
+    elif [[ "$active" -gt 1 ]]; then
+        doctor_problem "more than one schedule is installed (${active}) — they will both run"
+        doctor_fix "Keep com.stevegrunwell.asimov and bootout the rest."
+    fi
+    return 0
+}
+
+# Humanise an age in seconds: "3 minutes ago", "2 days ago".
+doctor_humanise_age() {
+    local seconds="$1" value unit
+    if   [[ "$seconds" -lt 60 ]];    then printf 'just now\n'; return 0
+    elif [[ "$seconds" -lt 3600 ]];  then value=$((seconds / 60));    unit=minute
+    elif [[ "$seconds" -lt 86400 ]]; then value=$((seconds / 3600));  unit=hour
+    else                                  value=$((seconds / 86400)); unit=day
+    fi
+    printf '%s %s%s ago\n' "$value" "$unit" "$([[ "$value" -eq 1 ]] || echo s)"
+}
+
+doctor_check_cache() {
+    doctor_heading 'Cache'
+
+    if [[ ! -d "$ASIMOV_CACHE_DIR" ]]; then
+        doctor_ok "no cache yet — the next run builds one"
+        return 0
+    fi
+
+    if [[ ! -w "$ASIMOV_CACHE_DIR" ]]; then
+        doctor_problem "${ASIMOV_CACHE_DIR} is not writable by you"
+        doctor_fix "rm -rf ${ASIMOV_CACHE_DIR}"
+        return 0
+    fi
+
+    local file owner broken=0 root_owned=0
+    for file in "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" \
+                "$ASIMOV_MDFIND_SEEN" "$ASIMOV_PATH_CACHE"; do
+        [[ -e "$file" ]] || continue
+        if [[ ! -r "$file" || ! -w "$file" ]]; then
+            broken=$((broken + 1))
+            owner="$(stat -f '%Su' "$file" 2>/dev/null || echo 'unknown')"
+            [[ "$owner" == "root" ]] && root_owned=$((root_owned + 1))
+            doctor_problem "${file} is not readable and writable by you (owner: ${owner})"
+        fi
+    done
+
+    if [[ "$broken" -gt 0 ]]; then
+        # Only name root as the cause when root actually owns something: a
+        # diagnosis that guesses wrong sends people chasing the wrong fix.
+        if [[ "$root_owned" -gt 0 ]]; then
+            doctor_fix "A run as root left these behind. Clear them:"
+        else
+            doctor_fix "Asimov can't use these. Clear them:"
+        fi
+        doctor_fix "rm -rf ${ASIMOV_CACHE_DIR}"
+        return 0
+    fi
+
+    if [[ -r "$ASIMOV_PATH_CACHE" ]]; then
+        local entries age
+        entries="$(grep -cve '^#' -e '^$' "$ASIMOV_PATH_CACHE" 2>/dev/null || true)"
+        doctor_ok "${entries:-0} cached paths"
+        age="$(( $(date +%s) - $(stat -f '%m' "$ASIMOV_PATH_CACHE" 2>/dev/null || date +%s) ))"
+        doctor_ok "last scan: $(doctor_humanise_age "$age")"
+    else
+        doctor_ok "cache is readable, no scan recorded yet"
+    fi
+    return 0
+}
+
+doctor_check_config() {
+    doctor_heading 'Config'
+
+    local config_file="${ASIMOV_ROOT}/.config/asimov/config"
+    if [[ ! -f "$config_file" ]]; then
+        doctor_note "no config file — using defaults"
+        return 0
+    fi
+    if [[ ! -r "$config_file" ]]; then
+        doctor_problem "${config_file} is not readable by you"
+        return 0
+    fi
+
+    # Same grammar load_config accepts, but here anything unrecognised is
+    # reported instead of silently ignored — a typo'd key is invisible otherwise.
+    local section="" line key unknown=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%#*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" ]] && continue
+
+        if [[ "$line" =~ ^\[([a-z_]+)\]$ ]]; then
+            section="${BASH_REMATCH[1]}"
+            case "$section" in
+                fixed_dirs|scan|sentinels) ;;
+                *)
+                    unknown=$((unknown + 1))
+                    doctor_problem "unknown section [${section}] in ${config_file}"
+                    ;;
+            esac
+            continue
+        fi
+
+        if [[ "$line" =~ ^([a-z_]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            case "${section}:${key}" in
+                fixed_dirs:enabled|fixed_dirs:extra|scan:extra|\
+                sentinels:extra|sentinels:disabled) ;;
+                *)
+                    # A key under an already-reported section is the same fault.
+                    case "$section" in
+                        fixed_dirs|scan|sentinels)
+                            unknown=$((unknown + 1))
+                            doctor_problem "unknown key '${key}' under [${section}] in ${config_file}"
+                            ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done < "$config_file"
+
+    [[ "$unknown" -eq 0 ]] && doctor_ok "${config_file} looks valid"
+    return 0
+}
+
+doctor_check_time_machine() {
+    doctor_heading 'Time Machine'
+
+    if ! command -v tmutil >/dev/null 2>&1; then
+        doctor_problem "tmutil not found — is this macOS?"
+        return 0
+    fi
+
+    if tmutil isexcluded "$ASIMOV_ROOT" >/dev/null 2>&1; then
+        doctor_ok "tmutil can read exclusions"
+    else
+        doctor_problem "tmutil cannot read exclusions — grant your terminal Full Disk Access"
+        doctor_fix "System Settings → Privacy & Security → Full Disk Access"
+    fi
+    return 0
+}
+
+cmd_doctor() {
+    [[ -n "$ASIMOV_QUIET" ]] || printf '\n%sAsimov doctor%s\n' \
+        "$ASIMOV_COLOR_INFO" "$ASIMOV_COLOR_RESET"
+
+    doctor_check_install
+    doctor_check_schedule
+    doctor_check_cache
+    doctor_check_config
+    doctor_check_time_machine
+
+    if [[ "$ASIMOV_DOCTOR_PROBLEMS" -eq 0 ]]; then
+        [[ -n "$ASIMOV_QUIET" ]] || printf '\n%s✓%s No problems found.\n\n' \
+            "$ASIMOV_COLOR_SUCCESS" "$ASIMOV_COLOR_RESET"
+        return 0
+    fi
+
+    printf '\n%s problem%s found.\n\n' "$ASIMOV_DOCTOR_PROBLEMS" \
+        "$([[ "$ASIMOV_DOCTOR_PROBLEMS" -eq 1 ]] || echo s)"
+    return 1
+}
+
+if [[ "$ASIMOV_COMMAND" == "doctor" ]]; then
+    cmd_doctor
+    exit $?
 fi
 
 # Load optional config from ~/.config/asimov/config.
@@ -407,7 +809,7 @@ readonly -a ASIMOV_SCAN_DIRS
 # When not writing (--no-cache / --no-write-cache), leave every cache file untouched.
 # (The paths cache is truncated separately by init_path_cache before the full scan.)
 if [[ -n "$ASIMOV_NO_READ_CACHE" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
-    rm -f "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" "$ASIMOV_MDFIND_SEEN"
+    rm -f "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" "$ASIMOV_MDFIND_SEEN" 2>/dev/null || true
 fi
 
 # Build a cache of paths already excluded from Time Machine.
@@ -428,11 +830,11 @@ spotlight_count="$(wc -l < "$ASIMOV_EXCLUDED_CACHE" | tr -d ' ')"
 # skips them instantly instead of wasting time retrying tmutil.
 # Skipped under --no-read-cache (--full-scan / --no-cache): every path is then
 # re-verified against the tmutil isexcluded ground truth instead.
-if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && { [[ -f "$ASIMOV_EXCLUDED_STATE" ]] || [[ -f "$ASIMOV_FAILED_STATE" ]]; }; then
+if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && { cache_readable "$ASIMOV_EXCLUDED_STATE" || cache_readable "$ASIMOV_FAILED_STATE"; }; then
     {
         cat "$ASIMOV_EXCLUDED_CACHE"
-        if [[ -f "$ASIMOV_EXCLUDED_STATE" ]]; then cat "$ASIMOV_EXCLUDED_STATE"; fi
-        if [[ -f "$ASIMOV_FAILED_STATE" ]]; then cat "$ASIMOV_FAILED_STATE"; fi
+        if cache_readable "$ASIMOV_EXCLUDED_STATE"; then cat "$ASIMOV_EXCLUDED_STATE"; fi
+        if cache_readable "$ASIMOV_FAILED_STATE"; then cat "$ASIMOV_FAILED_STATE"; fi
     } | sort -u > "${ASIMOV_EXCLUDED_CACHE}.merged"
     mv -f "${ASIMOV_EXCLUDED_CACHE}.merged" "$ASIMOV_EXCLUDED_CACHE"
 fi
@@ -444,22 +846,33 @@ verbose_timing "Excluded-path cache ready ($(wc -l < "$ASIMOV_EXCLUDED_CACHE" | 
 
 # Create the cache directory, chown to console user when running as root.
 ensure_cache_dir() {
-    local cache_dir
-    cache_dir="$(dirname "$ASIMOV_PATH_CACHE")"
-    mkdir -p "$cache_dir"
+    if [[ ! -d "$ASIMOV_CACHE_DIR" ]]; then
+        mkdir -p "$ASIMOV_CACHE_DIR" 2>/dev/null || {
+            warn_unusable_cache "$ASIMOV_CACHE_DIR" "writable"
+            return 0
+        }
+    fi
     if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
         local console_user
         console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo '')"
         if [[ -n "$console_user" && "$console_user" != "root" ]]; then
-            chown -R "$console_user" "$cache_dir" 2>/dev/null || true
+            # Create the state files *before* the chown. Appending to an existing
+            # file never changes its owner, so every write later in this root run
+            # lands in a file the console user can still read next time. Chowning
+            # only the directory (as this did before) left root-owned files behind
+            # that broke the following user run outright — issue #122.
+            touch "$ASIMOV_EXCLUDED_STATE" "$ASIMOV_FAILED_STATE" \
+                  "$ASIMOV_MDFIND_SEEN" "$ASIMOV_PATH_CACHE" 2>/dev/null || true
+            chown -R "$console_user" "$ASIMOV_CACHE_DIR" 2>/dev/null || true
         fi
     fi
+    return 0
 }
 
 # Read cached paths, filtering to those that still exist as directories
 # and fall under one of the scan dirs. Outputs valid paths to stdout.
 read_path_cache() {
-    [[ -f "$ASIMOV_PATH_CACHE" ]] || return 0
+    cache_readable "$ASIMOV_PATH_CACHE" || return 0
     local line d in_scope
     while IFS= read -r line; do
         # Skip comments and blank lines
@@ -482,13 +895,14 @@ read_path_cache() {
 init_path_cache() {
     [[ -n "$ASIMOV_DRY_RUN" || -n "$ASIMOV_NO_WRITE_CACHE" ]] && return 0
     ensure_cache_dir
+    cache_writable "$ASIMOV_PATH_CACHE" || return 0
     printf '# asimov path cache — updated %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$ASIMOV_PATH_CACHE"
 }
 
 # Append a single path to the cache file. No-op if --dry-run or writes are disabled (--no-write-cache / --no-cache).
 append_path_to_cache() {
     [[ -n "$ASIMOV_DRY_RUN" || -n "$ASIMOV_NO_WRITE_CACHE" ]] && return 0
-    printf '%s\n' "$1" >> "$ASIMOV_PATH_CACHE"
+    append_state "$1" "$ASIMOV_PATH_CACHE"
 }
 
 # Remove paths that are descendants of other paths in the list.
@@ -511,7 +925,8 @@ dedup_nested_paths() {
 # Writes atomically via temp file + mv. No-op if --dry-run or writes are disabled (--no-write-cache / --no-cache).
 finalize_path_cache() {
     [[ -n "$ASIMOV_DRY_RUN" || -n "$ASIMOV_NO_WRITE_CACHE" ]] && return 0
-    [[ -f "$ASIMOV_PATH_CACHE" ]] || return 0
+    cache_readable "$ASIMOV_PATH_CACHE" || return 0
+    cache_writable "$ASIMOV_PATH_CACHE" || return 0
 
     ASIMOV_PATH_CACHE_TMP="${ASIMOV_PATH_CACHE}.tmp.$$"
     {
@@ -529,13 +944,13 @@ finalize_path_cache() {
     ASIMOV_PATH_CACHE_TMP=""
 
     # Dedup the mdfind_seen file (grows with appends each run)
-    if [[ -f "$ASIMOV_MDFIND_SEEN" ]]; then
+    if cache_readable "$ASIMOV_MDFIND_SEEN" && cache_writable "$ASIMOV_MDFIND_SEEN"; then
         sort -u "$ASIMOV_MDFIND_SEEN" > "${ASIMOV_MDFIND_SEEN}.tmp"
         mv -f "${ASIMOV_MDFIND_SEEN}.tmp" "$ASIMOV_MDFIND_SEEN"
     fi
 
     # Dedup the failed-state file (grows with appends each run)
-    if [[ -f "$ASIMOV_FAILED_STATE" ]]; then
+    if cache_readable "$ASIMOV_FAILED_STATE" && cache_writable "$ASIMOV_FAILED_STATE"; then
         sort -u "$ASIMOV_FAILED_STATE" > "${ASIMOV_FAILED_STATE}.tmp"
         mv -f "${ASIMOV_FAILED_STATE}.tmp" "$ASIMOV_FAILED_STATE"
     fi
@@ -645,7 +1060,7 @@ discover_new_paths_via_mdfind() {
     combined_filter="$(mktemp)"
     {
         if [[ -n "$cached_paths_file" && -s "$cached_paths_file" ]]; then cat "$cached_paths_file"; fi
-        if [[ -f "$ASIMOV_MDFIND_SEEN" ]]; then cat "$ASIMOV_MDFIND_SEEN"; fi
+        if cache_readable "$ASIMOV_MDFIND_SEEN"; then cat "$ASIMOV_MDFIND_SEEN"; fi
     } > "$combined_filter"
     if [[ -s "$combined_filter" ]]; then
         local sorted_candidates sorted_filter filtered_file
@@ -729,7 +1144,9 @@ discover_new_paths_via_mdfind() {
     # No-op for dry-run/no-cache (no persistent state should be written).
     if [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
         ensure_cache_dir
-        cat "$uncached_file" >> "$ASIMOV_MDFIND_SEEN"
+        if cache_writable "$ASIMOV_MDFIND_SEEN"; then
+            cat "$uncached_file" >> "$ASIMOV_MDFIND_SEEN"
+        fi
     fi
     rm -f "$uncached_file"
     verbose_timing "Spotlight: checked ${mdfind_checked} candidates, ${mdfind_matched} new matches"
@@ -946,7 +1363,7 @@ exclude_paths_from_stdin() {
         if tmutil isexcluded "$path" 2>/dev/null | grep -Fq '[Excluded]'; then
             skipped_already=$((skipped_already + 1))
             # Persist so we skip it via the fast cache next time (not in dry-run / no-write)
-            [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_EXCLUDED_STATE"
+            [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]] && append_state "$path" "$ASIMOV_EXCLUDED_STATE"
             if [[ -n "$ASIMOV_VERBOSE" ]]; then
                 echo "- ${path} is already excluded, skipping."
             fi
@@ -963,7 +1380,7 @@ exclude_paths_from_stdin() {
         # deliberately 0555. Check first: addexclusion costs ~11s even when it fails.
         if [[ ! -w "$path" ]]; then
             echo "! ${path}: read-only, cannot be excluded — skipping." >&2
-            [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
+            [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && append_state "$path" "$ASIMOV_FAILED_STATE"
             continue
         fi
         # tmutil prints its POSIXError dump to stdout, not stderr — silence both.
@@ -971,11 +1388,11 @@ exclude_paths_from_stdin() {
             echo "! ${path}: failed to exclude (tmutil error), skipping." >&2
             # Persist failure so we skip this path on subsequent runs.
             # Use --no-read-cache to retry.
-            [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_FAILED_STATE"
+            [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && append_state "$path" "$ASIMOV_FAILED_STATE"
             continue
         fi
         # Persist immediately — survives Ctrl+C so the next run doesn't redo this path
-        [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && printf '%s\n' "$path" >> "$ASIMOV_EXCLUDED_STATE"
+        [[ -z "$ASIMOV_NO_WRITE_CACHE" ]] && append_state "$path" "$ASIMOV_EXCLUDED_STATE"
         record_excluded_path "$path" "${path} has been excluded from Time Machine backups"
         verbose_timing "  [${tmutil_i}/${#to_exclude[@]}] excluded in $((SECONDS - path_start))s: ${path}"
     done
@@ -1127,7 +1544,7 @@ fi
 # Cache is read when the cache file exists and reads aren't disabled
 # (--no-read-cache / --full-scan / --no-cache force a full scan).
 use_cache=false
-if [[ -z "$ASIMOV_NO_READ_CACHE" && -f "$ASIMOV_PATH_CACHE" ]]; then
+if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && cache_readable "$ASIMOV_PATH_CACHE"; then
     use_cache=true
 fi
 
@@ -1184,7 +1601,11 @@ else
     # On interrupt, tee has already appended every path find emitted, so the
     # next run can use the partial cache.
     verbose_timing "Starting find traversal of ${ASIMOV_SCAN_DIRS[*]}…"
-    if [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]]; then
+    # The tee'd branch is only safe when the cache is actually writable: a failing
+    # tee takes the whole pipeline down under pipefail. Fall back to the plain
+    # pipeline otherwise, so an unusable cache costs speed, not the run (#122).
+    if [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]] \
+        && { ensure_cache_dir; cache_writable "$ASIMOV_PATH_CACHE"; }; then
         init_path_cache
         { find "${ASIMOV_SCAN_DIRS[@]}" \( "${find_parameters_skip[@]}" \) \( -false "${find_parameters_vendor[@]}" \) \
             || true; } | tee -a "$ASIMOV_PATH_CACHE" | exclude_paths_from_stdin

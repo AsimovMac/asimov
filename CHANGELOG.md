@@ -8,7 +8,32 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- Vagrant boxes (`~/.vagrant.d/boxes`) is now one of the built-in global caches (opt-in via `[fixed_dirs] enabled = true`)
+- Vagrant boxes (`~/.vagrant.d/boxes`) is now one of the built-in global caches, excluded
+  when you opt in with `[fixed_dirs] enabled = true`
+  ([#117](https://github.com/AsimovMac/asimov/issues/117)).
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.11.0] — 2026-07-29
+
+### Added
+
+- `asimov doctor` checks an install rather than your projects: which `asimov` your shell
+  actually runs (and flags an older one shadowing it on `PATH`), whether a schedule is
+  installed and loaded, whether `~/.cache/asimov/` is readable and writable by you,
+  whether the config file parses, and whether `tmutil` can read exclusions at all. It is
+  read-only — it prints the fix rather than applying it — and never executes another
+  `asimov` binary it finds, reading versions out of the file instead, because v0.3.0
+  ignores every argument and would start a real scan. Exits `1` if it finds anything
+  ([#122](https://github.com/AsimovMac/asimov/issues/122)).
+- `UPGRADING.md`: a section for upgrading from v0.3.0, the version most people have,
+  covering the three leftovers that outlive it — the LaunchAgent, the old cellar, and a
+  root-owned cache — in an order that works
+  ([#122](https://github.com/AsimovMac/asimov/issues/122)).
 - `make test-system-bash` runs the suite under the macOS system bash (3.2), which is what
   most users get — `asimov` starts with `#!/usr/bin/env bash`, and a development machine
   usually has 5.x first on `PATH`. `make test BASH_BIN=<path>` pins any interpreter, and
@@ -35,6 +60,18 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   others, and a newer push cancels an in-flight run for the same ref.
 
 ### Fixed
+
+- An unreadable or unwritable file under `~/.cache/asimov/` no longer kills the run. The
+  cache is an optimisation, but a bare `cat` on an unreadable state file failed under
+  `set -Eeu -o pipefail` and aborted immediately, printing nothing but `Permission
+  denied`. Every cache read and write is now guarded: Asimov warns once, names the reset
+  command, and continues without the cache
+  ([#122](https://github.com/AsimovMac/asimov/issues/122)).
+- A run as root no longer leaves root-owned files behind that break the next run as your
+  own user — the cause of the failure above. The cache directory was chowned to the
+  console user, but the state files written afterwards were not; they are now created
+  before the chown, and appending never changes an existing file's owner
+  ([#122](https://github.com/AsimovMac/asimov/issues/122)).
 
 ### Removed
 
@@ -325,7 +362,8 @@ v0.8.0, after a `v0.9.0-beta.1`/`beta.2` testing round.
 Initial public release.
 
 
-[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.10.0...main
+[Unreleased]: https://github.com/AsimovMac/asimov/compare/v0.11.0...main
+[0.11.0]: https://github.com/AsimovMac/asimov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/AsimovMac/asimov/compare/v0.8.0...v0.10.0
 [0.8.0]: https://github.com/django23/asimov/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/django23/asimov/compare/v0.6.4...v0.7.0
