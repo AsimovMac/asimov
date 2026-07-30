@@ -19,4 +19,5 @@
 .m2/repository	maven	local repository
 .npm/_cacache	npm	content-addressable cache
 .nuget/packages	nuget	global packages
+.vagrant.d/boxes	vagrant	base box images
 go/pkg/mod	go	module cache (0555 inside; exclude as a whole)
