@@ -27,7 +27,7 @@ umask 077
 # Keep ASIMOV_VERSION in sync with CHANGELOG and package managers (e.g. Homebrew).
 # It lives in this file, not in a module, because `asimov doctor` reads the version
 # of other installs by grepping their launcher rather than executing them.
-readonly ASIMOV_VERSION='0.11.0'
+readonly ASIMOV_VERSION='0.12.0'
 
 # Resolve this script to its physical path, following symlinks. Homebrew links
 # bin/asimov into the cellar, so the library sits next to the *target*, not the link.
