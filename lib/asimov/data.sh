@@ -64,7 +64,9 @@ load_fixed_dirs() {
     done < "$file"
 }
 
-# Load data/skip-paths.tsv into ASIMOV_SKIP_PATHS (absolute).
+# Load data/skip-paths.tsv into ASIMOV_SKIP_PATHS (absolute), then append the
+# paths named under [skip_paths] in the config. Both the find expression and the
+# Spotlight top-up read this one array, so they cannot drift apart.
 load_skip_paths() {
     local file="${ASIMOV_DATA}/skip-paths.tsv"
     require_data_file "$file"
@@ -74,6 +76,10 @@ load_skip_paths() {
         [[ -z "$path" || "$path" == '#'* ]] && continue
         ASIMOV_SKIP_PATHS+=("${ASIMOV_ROOT}/${path}")
     done < "$file"
+
+    for path in ${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]+"${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}"}; do
+        ASIMOV_SKIP_PATHS+=("$path")
+    done
 }
 
 # Every sentinel record in effect for this run, one "dir sentinel" pair per line:

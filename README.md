@@ -131,7 +131,7 @@ If `mdfind` doesn't list your projects, the run isn't reaching them. The two usu
 ## Usage
 
 ```
-asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version]
+asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version] [directory]
 asimov prune  [--quiet]
 asimov doctor [--quiet]
 ```
@@ -273,6 +273,20 @@ enabled = true                   # exclude the built-in global caches
 extra   = ~/my-build-cache       # plus any paths you name (always excluded when they exist)
 extra   = ~/golang/pkg/mod       # e.g. a Go module cache under a custom GOPATH
 ```
+
+### Skip parts of your home directory
+
+Asimov never descends into `~/.Trash` or `~/Library`. Add directories of your own under `[skip_paths]` and they're left alone too - not searched, never excluded:
+
+```ini
+[skip_paths]
+extra = ~/Music                  # one "extra =" line per directory
+extra = ~/Pictures
+```
+
+This only narrows the *search*. Global caches you opted into under `[fixed_dirs]` are still excluded, even inside a skipped path.
+
+If all your code lives in one folder, scanning just that folder (`asimov ~/Code`, see [usage](#usage)) is usually simpler than skipping everything else.
 
 ## Other install methods
 

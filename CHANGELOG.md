@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `[skip_paths]` config section: name directories that Asimov should never search, alongside the built-in `~/.Trash` and `~/Library`. Thanks [@lunaluxie](https://github.com/lunaluxie)!
+
 - `asimov doctor` now checks the data files and reports how many sentinels and fixed directories are loaded, so an incomplete install is diagnosed rather than just failing.
 
 ### Changed

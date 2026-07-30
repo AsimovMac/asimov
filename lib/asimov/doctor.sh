@@ -271,7 +271,7 @@ doctor_check_config() {
         if [[ "$line" =~ ^\[([a-z_]+)\]$ ]]; then
             section="${BASH_REMATCH[1]}"
             case "$section" in
-                fixed_dirs|scan|sentinels) ;;
+                fixed_dirs|scan|sentinels|skip_paths) ;;
                 *)
                     unknown=$((unknown + 1))
                     doctor_problem "unknown section [${section}] in ${ASIMOV_CONFIG_FILE}"
@@ -284,11 +284,11 @@ doctor_check_config() {
             key="${BASH_REMATCH[1]}"
             case "${section}:${key}" in
                 fixed_dirs:enabled|fixed_dirs:extra|scan:extra|\
-                sentinels:extra|sentinels:disabled) ;;
+                sentinels:extra|sentinels:disabled|skip_paths:extra) ;;
                 *)
                     # A key under an already-reported section is the same fault.
                     case "$section" in
-                        fixed_dirs|scan|sentinels)
+                        fixed_dirs|scan|sentinels|skip_paths)
                             unknown=$((unknown + 1))
                             doctor_problem "unknown key '${key}' under [${section}] in ${ASIMOV_CONFIG_FILE}"
                             ;;
