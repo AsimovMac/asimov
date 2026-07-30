@@ -2,7 +2,7 @@
 #
 # prep-release.sh — Prepare a release PR.
 #
-# Bumps ASIMOV_VERSION in `asimov`, promotes [Unreleased] in CHANGELOG.md to
+# Bumps ASIMOV_VERSION in `bin/asimov`, promotes [Unreleased] in CHANGELOG.md to
 # a new version section (with compare links), runs `make check`, then
 # branches and commits. Does NOT push or open the PR — review first.
 #
@@ -29,7 +29,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-PREV="$(./asimov --version)"
+PREV="$(./bin/asimov --version)"
 if [[ "$PREV" == "$VERSION" ]]; then
     printf 'error: ASIMOV_VERSION is already %s\n' "$VERSION" >&2
     exit 1
@@ -46,8 +46,8 @@ printf 'Preparing release %s (previous: %s, date: %s)\n' "$VERSION" "$PREV" "$DA
 
 git checkout -b "$BRANCH"
 
-# Bump ASIMOV_VERSION in the asimov script.
-/usr/bin/sed -i '' -E "s/^readonly ASIMOV_VERSION='[^']+'/readonly ASIMOV_VERSION='$VERSION'/" asimov
+# Bump ASIMOV_VERSION in the launcher.
+/usr/bin/sed -i '' -E "s/^readonly ASIMOV_VERSION='[^']+'/readonly ASIMOV_VERSION='$VERSION'/" bin/asimov
 
 # Promote [Unreleased] to a new version section, insert a fresh empty
 # [Unreleased] above, and add a compare-link entry.
@@ -77,12 +77,12 @@ awk -v ver="$VERSION" -v prev="$PREV" -v date="$DATE" '
 ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 
 printf '\n=== diff ===\n'
-git --no-pager diff --stat asimov CHANGELOG.md
+git --no-pager diff --stat bin/asimov CHANGELOG.md
 
 printf '\nRunning make check...\n'
 make check
 
-git add asimov CHANGELOG.md
+git add bin/asimov CHANGELOG.md
 git commit -S -m "docs: release $VERSION"
 
 cat <<EOF
