@@ -98,7 +98,7 @@ This means Asimov never touches a folder that just happens to share a common nam
 | **R**                       | `renv`                                                                                                                           |
 | **DevOps / IaC**            | `.terraform`, `.terragrunt-cache`, `.vagrant`, `.direnv`, `cdk.out`                                                              |
 | **Game dev**                | `.godot`                                                                                                                         |
-| **Global caches** (opt-in)  | `~/.cache`, `~/.gradle/caches`, `~/.m2/repository`, `~/.npm/_cacache`, `~/.nuget/packages`, `~/.kube/cache`, `~/go/pkg/mod`         |
+| **Global caches** (opt-in)  | `~/.cache`, `~/.gradle/caches`, `~/.m2/repository`, `~/.npm/_cacache`, `~/.nuget/packages`, `~/.kube/cache`, `~/go/pkg/mod`, `~/.vagrant.d/boxes` |
 
 **Don't see your tool?** You can teach Asimov your own directory + sentinel pairs in a couple of lines — no need to wait for a release. See [Add your own patterns](#add-your-own-patterns).
 
