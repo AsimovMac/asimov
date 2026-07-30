@@ -260,6 +260,26 @@ enabled = true"
   [[ "$output" == *".config/asimov/config"* ]]
 }
 
+@test "doctor accepts a [skip_paths] section" {
+  write_config "[skip_paths]
+extra = ~/Music"
+
+  run_asimov doctor
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"looks valid"* ]]
+}
+
+@test "doctor flags an unknown key under [skip_paths]" {
+  write_config "[skip_paths]
+exrta = ~/Music"
+
+  run_asimov doctor
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"exrta"* ]]
+}
+
 @test "doctor flags an unknown config key" {
   write_config "[fixed_dirs]
 enbaled = true"

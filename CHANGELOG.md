@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
-- `[skip_paths]` configuration option to skip sub directories in search.
+- `[skip_paths]` config section: name directories that Asimov should never search, alongside the built-in `~/.Trash` and `~/Library`. Thanks [@lunaluxie](https://github.com/lunaluxie)!
 
 ### Changed
 

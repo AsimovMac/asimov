@@ -626,7 +626,7 @@ doctor_check_config() {
         if [[ "$line" =~ ^\[([a-z_]+)\]$ ]]; then
             section="${BASH_REMATCH[1]}"
             case "$section" in
-                fixed_dirs|scan|sentinels) ;;
+                fixed_dirs|scan|sentinels|skip_paths) ;;
                 *)
                     unknown=$((unknown + 1))
                     doctor_problem "unknown section [${section}] in ${config_file}"
@@ -639,11 +639,11 @@ doctor_check_config() {
             key="${BASH_REMATCH[1]}"
             case "${section}:${key}" in
                 fixed_dirs:enabled|fixed_dirs:extra|scan:extra|\
-                sentinels:extra|sentinels:disabled) ;;
+                sentinels:extra|sentinels:disabled|skip_paths:extra) ;;
                 *)
                     # A key under an already-reported section is the same fault.
                     case "$section" in
-                        fixed_dirs|scan|sentinels)
+                        fixed_dirs|scan|sentinels|skip_paths)
                             unknown=$((unknown + 1))
                             doctor_problem "unknown key '${key}' under [${section}] in ${config_file}"
                             ;;
@@ -1102,11 +1102,7 @@ discover_new_paths_via_mdfind() {
         # Skip paths under ASIMOV_SKIP_PATHS
         local skip=false
         local skip_dir
-        local all_skip_paths=("${ASIMOV_SKIP_PATHS[@]}")
-        if [[ ${#ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]} -gt 0 ]]; then
-            all_skip_paths+=("${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}")
-        fi
-        for skip_dir in "${all_skip_paths[@]}"; do
+        for skip_dir in "${ASIMOV_SKIP_PATHS[@]}"; do
             if [[ "$candidate" == "${skip_dir}"/* || "$candidate" == "${skip_dir}" ]]; then
                 skip=true
                 break
@@ -1164,9 +1160,13 @@ discover_new_paths_via_mdfind() {
 # Paths to unconditionally skip over. This prevents Asimov from modifying the
 # Time Machine exclusions for these paths (and descendants). It has an important
 # side-effect of speeding up the search.
+#
+# Anything listed under [skip_paths] in the config file is appended here, so the
+# find expression and the Spotlight pass both honour it.
 readonly ASIMOV_SKIP_PATHS=(
     "${ASIMOV_ROOT}/.Trash"
     "${ASIMOV_ROOT}/Library"
+    ${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]+"${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}"}
 )
 
 # A list of "directory"/"sentinel" pairs.
@@ -1409,18 +1409,14 @@ exclude_paths_from_stdin() {
     fi
 }
 
-# Build find parameters to skip ASIMOV_SKIP_PATHS (hardcoded directories like .Trash, Library).
+# Build find parameters to skip ASIMOV_SKIP_PATHS (.Trash, Library, plus [skip_paths] extras).
 # Already-excluded paths are NOT pruned here — they are filtered cheaply via grep in
 # exclude_paths_from_stdin instead, avoiding the O(dirs × prune_count) performance trap.
 # Result is stored in global find_parameters_skip.
 build_find_skip_params() {
     find_parameters_skip=()
     local skip_dir
-    local all_skip_paths=("${ASIMOV_SKIP_PATHS[@]}")
-    if [[ ${#ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]} -gt 0 ]]; then
-        all_skip_paths+=("${ASIMOV_CONFIG_EXTRA_SKIP_PATHS[@]}")
-    fi
-    for skip_dir in "${all_skip_paths[@]}"; do
+    for skip_dir in "${ASIMOV_SKIP_PATHS[@]}"; do
         find_parameters_skip+=( -not \( -path "${skip_dir}" -prune \) )
     done
 }
