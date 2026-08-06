@@ -283,7 +283,7 @@ doctor_check_config() {
         if [[ "$line" =~ ^([a-z_]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
             key="${BASH_REMATCH[1]}"
             case "${section}:${key}" in
-                fixed_dirs:enabled|fixed_dirs:extra|scan:extra|\
+                fixed_dirs:enabled|fixed_dirs:extra|scan:extra|scan:dirs|\
                 sentinels:extra|sentinels:disabled|skip_paths:extra) ;;
                 *)
                     # A key under an already-reported section is the same fault.

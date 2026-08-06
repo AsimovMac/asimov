@@ -639,6 +639,128 @@ extra = ${HOME}/Code"
 }
 
 # =============================================================================
+# [scan] dirs — scan only these directories, home not implied
+# =============================================================================
+
+@test "config [scan] dirs scans only the listed directory, not home" {
+  local external
+  external="$(mktemp -d)"
+  mkdir -p "${external}/Site/node_modules"
+  echo "sentinel" > "${external}/Site/package.json"
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+dirs = ${external}"
+
+  run_asimov
+  assert_excluded "${external}/Site/node_modules"
+  refute_excluded "${HOME}/Code/Home-Project/node_modules"
+  [[ "$(count_exclusions)" -eq 1 ]]
+
+  rm -rf "$external"
+}
+
+@test "config [scan] dirs with multiple entries scans each, home still excluded" {
+  local a b
+  a="$(mktemp -d)"
+  b="$(mktemp -d)"
+  mkdir -p "${a}/Site/node_modules"
+  echo "sentinel" > "${a}/Site/package.json"
+  mkdir -p "${b}/App/node_modules"
+  echo "sentinel" > "${b}/App/package.json"
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+dirs = ${a}
+dirs = ${b}"
+
+  run_asimov
+  assert_excluded "${a}/Site/node_modules"
+  assert_excluded "${b}/App/node_modules"
+  refute_excluded "${HOME}/Code/Home-Project/node_modules"
+  [[ "$(count_exclusions)" -eq 2 ]]
+
+  rm -rf "$a" "$b"
+}
+
+@test "config [scan] dirs includes home only when listed explicitly" {
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+dirs = ${HOME}"
+
+  run_asimov
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+}
+
+@test "config [scan] dirs with a missing directory warns and scans the rest" {
+  local external
+  external="$(mktemp -d)"
+  mkdir -p "${external}/Site/node_modules"
+  echo "sentinel" > "${external}/Site/package.json"
+
+  write_config "[scan]
+dirs = /does/not/exist
+dirs = ${external}"
+
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" =~ "does not exist" ]]
+  assert_excluded "${external}/Site/node_modules"
+
+  rm -rf "$external"
+}
+
+@test "config [scan] dirs all missing exits with an error" {
+  write_config "[scan]
+dirs = /does/not/exist"
+
+  run_asimov
+  [[ "$status" -eq 1 ]]
+  [[ "$output" =~ "none of the" ]]
+}
+
+@test "config [scan] dirs takes precedence over [scan] extra, with a warning" {
+  local only
+  only="$(mktemp -d)"
+  mkdir -p "${only}/Site/node_modules"
+  echo "sentinel" > "${only}/Site/package.json"
+
+  local extra
+  extra="$(mktemp -d)"
+  mkdir -p "${extra}/Other/node_modules"
+  echo "sentinel" > "${extra}/Other/package.json"
+
+  write_config "[scan]
+dirs = ${only}
+extra = ${extra}"
+
+  run_asimov
+  [[ "$output" == *"ignoring [scan] extra"* ]]
+  assert_excluded "${only}/Site/node_modules"
+  refute_excluded "${extra}/Other/node_modules"
+
+  rm -rf "$only" "$extra"
+}
+
+@test "directory argument overrides config [scan] dirs" {
+  local external
+  external="$(mktemp -d)"
+  mkdir -p "${external}/Site/node_modules"
+  echo "sentinel" > "${external}/Site/package.json"
+  create_project "Code/Home-Project" "package.json" "node_modules"
+
+  write_config "[scan]
+dirs = ${external}"
+
+  run_asimov "${HOME}/Code"
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+  refute_excluded "${external}/Site/node_modules"
+
+  rm -rf "$external"
+}
+
+# =============================================================================
 # --verbose
 # =============================================================================
 
