@@ -8,6 +8,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `[scan] dirs` config key: an exhaustive list of scan roots, unlike `[scan] extra` which
+  adds to home. Home is scanned only if you list it yourself, so you can scan just
+  `~/Code` instead of all of home
+  ([#129](https://github.com/AsimovMac/asimov/issues/129)).
+
 ### Changed
 
 ### Fixed

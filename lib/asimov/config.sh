@@ -14,6 +14,7 @@ load_config() {
     ASIMOV_CONFIG_EXTRA_SENTINELS=()
     ASIMOV_CONFIG_DISABLED_SENTINELS=()
     ASIMOV_CONFIG_SCAN_DIRS=()
+    ASIMOV_CONFIG_SCAN_DIRS_ONLY=()
     ASIMOV_CONFIG_EXTRA_SKIP_PATHS=()
 
     [[ -f "$ASIMOV_CONFIG_FILE" ]] || return 0
@@ -46,6 +47,10 @@ load_config() {
                 scan:extra)
                     value="${value/#\~/$HOME}"
                     ASIMOV_CONFIG_SCAN_DIRS+=("$value")
+                    ;;
+                scan:dirs)
+                    value="${value/#\~/$HOME}"
+                    ASIMOV_CONFIG_SCAN_DIRS_ONLY+=("$value")
                     ;;
                 sentinels:extra)
                     ASIMOV_CONFIG_EXTRA_SENTINELS+=("$value")
