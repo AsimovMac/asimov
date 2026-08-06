@@ -743,6 +743,23 @@ extra = ${extra}"
   rm -rf "$only" "$extra"
 }
 
+@test "config [scan] dirs narrows a cache built from a wider scan" {
+  create_project "Code/Home-Project" "package.json" "node_modules"
+  create_project "Other/Side-Project" "package.json" "node_modules"
+
+  # A cache left over from an earlier full-home run holds both paths. Narrowing
+  # the scan roots must drop the out-of-scope one on read rather than re-exclude it.
+  write_path_cache "${HOME}/Code/Home-Project/node_modules" \
+                   "${HOME}/Other/Side-Project/node_modules"
+
+  write_config "[scan]
+dirs = ${HOME}/Code"
+
+  run_asimov
+  assert_excluded "${HOME}/Code/Home-Project/node_modules"
+  refute_excluded "${HOME}/Other/Side-Project/node_modules"
+}
+
 @test "directory argument overrides config [scan] dirs" {
   local external
   external="$(mktemp -d)"
