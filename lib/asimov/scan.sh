@@ -5,6 +5,8 @@
 
 # Resolve the set of directories to scan into ASIMOV_SCAN_DIRS.
 #   - A positional CLI argument overrides everything: scan only that directory.
+#   - Otherwise, [scan] dirs in config (if set) is the exhaustive list of roots to
+#     scan; home is included only if listed explicitly.
 #   - Otherwise scan the home directory plus any [scan] extra dirs from config.
 # Configured dirs that don't exist are warned about and skipped rather than
 # aborting the run (e.g. an unmounted external volume).
@@ -20,16 +22,35 @@ resolve_scan_dirs() {
         return 0
     fi
 
-    ASIMOV_SCAN_DIRS=("$ASIMOV_ROOT")
     local scan_dir
-    for scan_dir in ${ASIMOV_CONFIG_SCAN_DIRS[@]+"${ASIMOV_CONFIG_SCAN_DIRS[@]}"}; do
-        if [[ ! -d "$scan_dir" ]]; then
-            [[ -z "$ASIMOV_QUIET" ]] && \
-                echo "asimov: configured scan directory does not exist, skipping: ${scan_dir}" >&2
-            continue
+    if [[ ${#ASIMOV_CONFIG_SCAN_DIRS_ONLY[@]} -gt 0 ]]; then
+        if [[ ${#ASIMOV_CONFIG_SCAN_DIRS[@]} -gt 0 && -z "$ASIMOV_QUIET" ]]; then
+            echo "asimov: [scan] dirs is set, ignoring [scan] extra" >&2
         fi
-        ASIMOV_SCAN_DIRS+=("$scan_dir")
-    done
+        for scan_dir in "${ASIMOV_CONFIG_SCAN_DIRS_ONLY[@]}"; do
+            if [[ ! -d "$scan_dir" ]]; then
+                [[ -z "$ASIMOV_QUIET" ]] && \
+                    echo "asimov: configured scan directory does not exist, skipping: ${scan_dir}" >&2
+                continue
+            fi
+            ASIMOV_SCAN_DIRS+=("$scan_dir")
+        done
+
+        if [[ ${#ASIMOV_SCAN_DIRS[@]} -eq 0 ]]; then
+            echo "asimov: none of the [scan] dirs in ${ASIMOV_CONFIG_FILE} exist" >&2
+            exit 1
+        fi
+    else
+        ASIMOV_SCAN_DIRS=("$ASIMOV_ROOT")
+        for scan_dir in ${ASIMOV_CONFIG_SCAN_DIRS[@]+"${ASIMOV_CONFIG_SCAN_DIRS[@]}"}; do
+            if [[ ! -d "$scan_dir" ]]; then
+                [[ -z "$ASIMOV_QUIET" ]] && \
+                    echo "asimov: configured scan directory does not exist, skipping: ${scan_dir}" >&2
+                continue
+            fi
+            ASIMOV_SCAN_DIRS+=("$scan_dir")
+        done
+    fi
 
     prune_nested_scan_dirs
 }

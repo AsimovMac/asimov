@@ -245,6 +245,16 @@ extra = /Volumes/Work/clients    # ~ is expanded, e.g. extra = ~/Sites
 
 Your home directory is always scanned; these are added to it. Configured directories that don't exist (an unmounted volume, say) are skipped with a warning instead of failing the run. Passing a directory on the command line (`asimov /some/path`) still overrides everything and scans only that path.
 
+Only keep projects under a subset of home — say `~/Code` — and don't want the rest of home scanned at all? Use `dirs` instead of `extra`. It's an exhaustive list: home is scanned only if you list it.
+
+```ini
+[scan]
+dirs = ~/Code                    # one "dirs =" line per directory; home is NOT implied
+dirs = /Volumes/Work/clients      # add as many roots as you need
+```
+
+`dirs` and `extra` answer different questions, so don't mix them — if both are set, `dirs` wins and `extra` is ignored with a warning. If every listed directory turns out to be missing, Asimov exits with an error rather than silently scanning nothing.
+
 ### Add your own patterns
 
 Using a tool Asimov doesn't know about yet? Add it yourself. Each pattern is a `directory sentinel` pair — exactly the same mechanism the [built-ins](#how-it-works) use: the directory is excluded **only** when the sentinel file sits right beside it, so it's safe even for common folder names.
