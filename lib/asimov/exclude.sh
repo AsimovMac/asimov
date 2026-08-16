@@ -71,14 +71,24 @@ exclude_paths_from_stdin() {
     fi
     verbose_timing "Filtered: ${#to_exclude[@]} new, ${already_excluded} already excluded"
 
-    # Layer 2: Filter descendants of ASIMOV_FIXED_DIRS — they'll be excluded
-    # unconditionally later, so calling tmutil on them individually is wasted (~11s each).
-    if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" && ${#to_exclude[@]} -gt 0 ]]; then
+    # Layer 2: Filter descendants of enabled built-in fixed dirs and configured
+    # extra fixed dirs — they'll be excluded unconditionally later, so calling
+    # tmutil on them individually is wasted (~11s each).
+    local -a effective_fixed_dirs=()
+    if [[ "$ASIMOV_CONFIG_FIXED_DIRS_ENABLED" == "true" ]]; then
+        effective_fixed_dirs=("${ASIMOV_FIXED_DIRS[@]}")
+    fi
+    local configured_fixed_dir
+    for configured_fixed_dir in ${ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]+"${ASIMOV_CONFIG_EXTRA_FIXED_DIRS[@]}"}; do
+        effective_fixed_dirs+=("$configured_fixed_dir")
+    done
+
+    if [[ ${#effective_fixed_dirs[@]} -gt 0 && ${#to_exclude[@]} -gt 0 ]]; then
         local -a filtered_exclude=()
         for path in "${to_exclude[@]}"; do
             local under_fixed=false
             local fixed_dir
-            for fixed_dir in "${ASIMOV_FIXED_DIRS[@]}"; do
+            for fixed_dir in "${effective_fixed_dirs[@]}"; do
                 if [[ "$path" == "${fixed_dir}/"* ]]; then
                     under_fixed=true
                     break
