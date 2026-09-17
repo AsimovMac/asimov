@@ -17,6 +17,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
+- Sentinel matches nested under directories configured with `[fixed_dirs] extra` are now
+  skipped, avoiding redundant per-directory Time Machine exclusions before the configured
+  parent directory is excluded ([#132](https://github.com/AsimovMac/asimov/issues/132)).
+
 ### Removed
 
 ## [0.12.0] — 2026-07-30

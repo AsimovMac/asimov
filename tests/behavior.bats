@@ -370,6 +370,32 @@ extra = ~/.cache-b"
   assert_excluded "${HOME}/.cache-b"
 }
 
+@test "config: extra fixed dir suppresses nested sentinel exclusions when fixed dirs enabled" {
+  create_project ".custom-cache/My-Project" "package.json" "node_modules"
+  write_config "[fixed_dirs]
+enabled = true
+extra = ~/.custom-cache"
+
+  run_asimov --no-cache
+
+  assert_excluded "${HOME}/.custom-cache"
+  refute_excluded "${HOME}/.custom-cache/My-Project/node_modules"
+  [[ "$(count_exclusions)" -eq 1 ]]
+}
+
+@test "config: extra fixed dir suppresses nested sentinel exclusions when fixed dirs disabled" {
+  create_project ".custom-cache/My-Project" "package.json" "node_modules"
+  write_config "[fixed_dirs]
+enabled = false
+extra = ~/.custom-cache"
+
+  run_asimov --no-cache
+
+  assert_excluded "${HOME}/.custom-cache"
+  refute_excluded "${HOME}/.custom-cache/My-Project/node_modules"
+  [[ "$(count_exclusions)" -eq 1 ]]
+}
+
 @test "config: extra sentinel pair triggers exclusion" {
   create_project "Code/My-Project" "custom.config" ".custom-deps"
   write_config "[sentinels]
