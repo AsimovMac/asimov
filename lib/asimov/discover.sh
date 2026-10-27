@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Incremental discovery via Spotlight, used on a cached run instead of a full
-# `find` traversal.
+# Incremental discovery via Spotlight and filesystem traversal of its blind spots.
 
 # Discover new dependency paths via Spotlight (mdfind) that aren't in the current
 # cache. For each candidate, validate that the sentinel exists in the parent
@@ -168,4 +167,94 @@ discover_new_paths_via_mdfind() {
     fi
     rm -f "$uncached_file"
     verbose_timing "Spotlight: checked ${mdfind_checked} candidates, ${mdfind_matched} new matches"
+}
+
+# Probe only roots and immediate children. A positive count does not prove that
+# every descendant is indexed, so deeper isolated gaps still need a full scan.
+discover_paths_in_spotlight_blind_spots() {
+  local cached_paths_file="$1"
+  local path pattern scan_dir candidate count skip known_paths children_file known_argument_bytes=0
+  local -a candidates=() find_parameters_known=() blocked_paths=() known_names=()
+
+  build_find_skip_params
+  build_find_vendor_params
+  blocked_paths=("${ASIMOV_SKIP_PATHS[@]}")
+  known_paths="$(mktemp)"
+  cat "$cached_paths_file" "$ASIMOV_EXCLUDED_CACHE" | sort -u | dedup_nested_paths > "$known_paths"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    blocked_paths+=("$path")
+  done < "$known_paths"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    # find -name treats these characters as patterns, even in quoted arguments.
+    pattern="${path//\\/\\\\}"
+    pattern="${pattern//\*/\\*}"
+    pattern="${pattern//\?/\\?}"
+    pattern="${pattern//\[/\\[}"
+    known_names+=( -or -name "$pattern" )
+    # Allow four bytes per character plus argument overhead within a 128 KiB budget.
+    known_argument_bytes=$((known_argument_bytes + ${#pattern} * 4 + 32))
+    if [[ "$known_argument_bytes" -gt 131072 ]]; then
+      known_names=()
+      break
+    fi
+  done < <(sed 's|.*/||' "$known_paths" | sort -u)
+  # Keep arguments bounded even when the cache contains thousands of paths.
+  # Only matching directory names need the exact path lookup.
+  if [[ ${#known_names[@]} -eq 0 ]]; then
+    known_names=( -or -true )
+  fi
+  find_parameters_known=( -not \( -type d \( -false ${known_names[@]+"${known_names[@]}"} \) \
+    -exec grep -Fxq -- {} "$known_paths" \; -prune \) )
+
+  children_file="$(mktemp)"
+  for scan_dir in "${ASIMOV_SCAN_DIRS[@]}"; do
+    candidates=("$scan_dir")
+    while [[ ${#candidates[@]} -gt 0 ]]; do
+      candidate="${candidates[0]}"
+      candidates=("${candidates[@]:1}")
+      skip=false
+      for path in ${blocked_paths[@]+"${blocked_paths[@]}"}; do
+        if [[ "$candidate" == "$path" || "$candidate" == "$path/"* ]]; then
+          skip=true
+          break
+        fi
+      done
+      [[ "$skip" == true ]] && continue
+      if tmutil isexcluded "$candidate" 2>/dev/null | grep -Fq '[Excluded]'; then
+        continue
+      fi
+      if [[ "$candidate" == "$scan_dir" ]]; then
+        if ! find "$scan_dir" -mindepth 1 -maxdepth 1 -not -name '.*' \( "${find_parameters_skip[@]}" \) \
+          \( -true "${find_parameters_known[@]}" \) -type d -print0 > "$children_file"; then
+          echo "asimov: failed to list scan directory: ${scan_dir}" >&2
+          rm -f "$known_paths" "$children_file"
+          return 1
+        fi
+        while IFS= read -r -d '' path; do
+          if [[ "$path" == *$'\n'* ]]; then
+            printf -v pattern '%q' "$path"
+            verbose_timing "Skipping child with a newline in its name: ${pattern}"
+            continue
+          fi
+          candidates+=("$path")
+        done < "$children_file"
+        continue
+      fi
+      count="$(mdfind -onlyin "$candidate" -count 'kMDItemContentType == "public.folder"' 2>/dev/null)" || count=""
+      if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
+        continue
+      fi
+      verbose_timing "Spotlight blind spot: ${candidate}. Searching with find…"
+      if ! find "$candidate" \( "${find_parameters_skip[@]}" \) \
+        \( -true ${find_parameters_known[@]+"${find_parameters_known[@]}"} \) \
+        \( -false "${find_parameters_vendor[@]}" \); then
+        echo "asimov: failed to search Spotlight blind spot: ${candidate}" >&2
+        rm -f "$known_paths" "$children_file"
+        return 1
+      fi
+    done
+  done
+  rm -f "$known_paths" "$children_file"
 }

@@ -175,7 +175,21 @@ Worth knowing why the distinction exists: Time Machine has two kinds of exclusio
 
 So Asimov's own exclusions clean themselves up. Only sticky entries, set by other tools or by hand, can outlive their directory — and nothing else surfaces them.
 
-Asimov keeps a cache under `~/.cache/asimov/` so repeat runs are near-instant. The two flags above control it on independent axes — reading and writing:
+Asimov keeps a cache under `~/.cache/asimov/` to speed up repeat runs.
+
+On cached runs, Spotlight finds new projects in indexed directories. Asimov checks
+folder counts for each scan root's visible immediate children. Directories
+already excluded from Time Machine are not probed or searched. If a child's count
+is zero or unavailable, Asimov searches that child with the full scan's sentinel and
+skip rules. Cached paths and known exclusions are pruned from this search.
+It never recursively searches the scan root itself on a cached run. Children with
+newlines in their names are skipped with a verbose warning.
+`--verbose` lists these Spotlight blind spots. This needs no configuration.
+An indexed child can still contain an unindexed directory deeper in its tree.
+Use `--no-read-cache` to find projects in those deeper gaps.
+Full scans also search hidden directories.
+
+The cache flags control reading and writing separately:
 
 - `--no-read-cache` — *"rebuild."* Ignores everything cached, re-scans the filesystem, and re-verifies every directory against Time Machine, then writes a fresh cache. **`--full-scan` is an alias.**
 - `--no-write-cache` — *"don't touch state."* Uses the fast cache to read, but persists nothing. Handy with `--dry-run`.

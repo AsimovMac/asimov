@@ -11,7 +11,20 @@ set -euo pipefail
 # Join all args to detect query type
 all_args="$*"
 
-if [[ "$all_args" == *"kMDItemFSName"* ]]; then
+if [[ "$all_args" == *"-count"* ]]; then
+    if [[ "${ASIMOV_TEST_MDFIND_COUNT_FAIL:-}" == 1 ]]; then
+        exit 1
+    fi
+    if [[ -n "${ASIMOV_TEST_MDFIND_PROBES:-}" ]]; then
+        printf '%s\n' "$2" >> "$ASIMOV_TEST_MDFIND_PROBES"
+    fi
+    if [[ -n "${ASIMOV_TEST_MDFIND_BLIND_SPOTS:-}" ]] && \
+        grep -Fxq "$2" "$ASIMOV_TEST_MDFIND_BLIND_SPOTS"; then
+        echo 0
+    else
+        echo "${ASIMOV_TEST_MDFIND_FOLDER_COUNT:-1}"
+    fi
+elif [[ "$all_args" == *"kMDItemFSName"* ]]; then
     # Sentinel discovery query (incremental cache)
     if [[ -n "${ASIMOV_TEST_MDFIND_SENTINEL_RESULTS:-}" && -f "${ASIMOV_TEST_MDFIND_SENTINEL_RESULTS}" ]]; then
         cat "${ASIMOV_TEST_MDFIND_SENTINEL_RESULTS}"

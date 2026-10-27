@@ -97,7 +97,7 @@ cmd_scan() {
     return 0
 }
 
-# Cached run: exclude everything already known, then top up via Spotlight.
+# Cached run: top up known paths via Spotlight and walk its blind spots.
 scan_from_cache() {
     [[ -z "$ASIMOV_QUIET" ]] && printf '\n%s⏳ Using cached paths…%s\n' \
         "$ASIMOV_COLOR_INFO" "$ASIMOV_COLOR_RESET"
@@ -113,6 +113,8 @@ scan_from_cache() {
     new_paths="$(mktemp)"
     discover_new_paths_via_mdfind "$cached_valid" > "$new_paths"
     verbose_timing "Spotlight discovery: $(wc -l < "$new_paths" | tr -d ' ') new paths"
+
+    discover_paths_in_spotlight_blind_spots "$cached_valid" >> "$new_paths"
 
     # Exclude all paths (cached + new), deduped to remove nested redundancies.
     # Time Machine exclusions are recursive, so excluding a parent covers descendants.
