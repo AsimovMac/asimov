@@ -108,6 +108,28 @@ require_non_root() {
   [[ "$output" == *"loaded"* ]]
 }
 
+@test "doctor reports a loaded modern Homebrew schedule (sh.brew.asimov) as healthy" {
+  write_launch_agent_with_args "sh.brew.asimov" "$(command -v bash)"
+  set_loaded_agents "sh.brew.asimov"
+
+  run_asimov doctor
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"sh.brew.asimov"* ]]
+  [[ "$output" == *"loaded"* ]]
+}
+
+@test "doctor offers to start an unloaded modern Homebrew schedule (sh.brew.asimov)" {
+  write_launch_agent_with_args "sh.brew.asimov" "$(command -v bash)"
+  set_loaded_agents
+
+  run_asimov doctor
+
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"sh.brew.asimov"* ]]
+  [[ "$output" == *"brew services start asimov"* ]]
+}
+
 @test "doctor flags a plist whose program no longer exists" {
   write_launch_agent "homebrew.mxcl.asimov" "/opt/homebrew/Cellar/asimov/0.3.0/bin/asimov"
   set_loaded_agents "homebrew.mxcl.asimov"

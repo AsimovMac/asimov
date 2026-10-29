@@ -22,7 +22,8 @@ readonly ASIMOV_CURRENT_LABEL='com.stevegrunwell.asimov'
 readonly ASIMOV_DOCTOR_LABELS=(
     'com.stevegrunwell.asimov'   # current, and the original
     'com.django23.asimov'        # the v0.4.x–v0.8.0 fork
-    'homebrew.mxcl.asimov'       # brew services
+    'sh.brew.asimov'             # brew services
+    'homebrew.mxcl.asimov'       # brew services (legacy)
 )
 
 ASIMOV_DOCTOR_PROBLEMS=0
@@ -156,7 +157,7 @@ doctor_check_schedule() {
         [[ -f "$plist" ]] || continue
         active=$((active + 1))
 
-        program="$(plutil -extract Program raw "$plist" 2>/dev/null || true)"
+        program="$(plutil -extract Program raw "$plist" 2>/dev/null || plutil -extract ProgramArguments.0 raw "$plist" 2>/dev/null || true)"
         if [[ -n "$program" && ! -x "$program" ]]; then
             doctor_problem "${label}: its program ${program} no longer exists"
             doctor_fix "launchctl bootout gui/\$(id -u)/${label}"
@@ -169,6 +170,9 @@ doctor_check_schedule() {
         elif [[ "$label" == "$ASIMOV_CURRENT_LABEL" ]]; then
             doctor_problem "${label}: installed but not loaded, so it never runs"
             doctor_fix "launchctl bootstrap gui/\$(id -u) ${plist}"
+        elif [[ "$label" == 'sh.brew.asimov' ]]; then
+            doctor_problem "${label}: installed but not loaded, so it never runs"
+            doctor_fix "brew services start asimov"
         else
             # A label we no longer ship, sitting unloaded: a leftover from an
             # older install. Loading it is never the right advice.

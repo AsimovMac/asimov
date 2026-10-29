@@ -241,6 +241,30 @@ write_launch_agent() {
 PLIST
 }
 
+# Write a LaunchAgent plist using ProgramArguments (as Homebrew does).
+write_launch_agent_with_args() {
+    local label="$1"
+    local program="${2:-/usr/local/bin/asimov}"
+    local dir="${HOME}/Library/LaunchAgents"
+    mkdir -p "$dir"
+    cat > "${dir}/${label}.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${label}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${program}</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>86400</integer>
+</dict>
+</plist>
+PLIST
+}
+
 # Mark a LaunchAgent label as loaded for the mock launchctl.
 #
 # Usage: set_loaded_agents "com.stevegrunwell.asimov" "homebrew.mxcl.asimov"

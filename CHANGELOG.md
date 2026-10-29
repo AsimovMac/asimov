@@ -17,6 +17,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
+- `asimov doctor` now recognizes the scheduled launch agent created by modern Homebrew services
+  (`sh.brew.asimov`), which was previously reported as "not scheduled". Plists defining their binary
+  under `ProgramArguments` instead of `Program` are also now handled properly ([#134](https://github.com/AsimovMac/asimov/issues/134)).
 - Sentinel matches nested under directories configured with `[fixed_dirs] extra` are now
   skipped, avoiding redundant per-directory Time Machine exclusions before the configured
   parent directory is excluded ([#132](https://github.com/AsimovMac/asimov/issues/132)).
