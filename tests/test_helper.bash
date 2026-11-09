@@ -88,6 +88,33 @@ refute_excluded() {
   fi
 }
 
+# Delete a directory and create it again, as `rm -rf node_modules && npm install`
+# does. Time Machine stores an exclusion as an xattr on the directory itself, so
+# the new directory is no longer excluded; drop it from the mock's database too.
+#
+# Usage: recreate_dir <path>
+recreate_dir() {
+  local path="$1"
+  rm -rf "$path"
+  mkdir -p "$path"
+  { grep -Fxv "$path" "$ASIMOV_TEST_EXCLUSIONS" || true; } > "${ASIMOV_TEST_EXCLUSIONS}.tmp"
+  mv -f "${ASIMOV_TEST_EXCLUSIONS}.tmp" "$ASIMOV_TEST_EXCLUSIONS"
+}
+
+# Log every mock tmutil call from here on (see tests/bin/tmutil).
+log_tmutil_calls() {
+  ASIMOV_TEST_TMUTIL_LOG="${TEST_TEMP_DIR}/.tmutil_log"
+  export ASIMOV_TEST_TMUTIL_LOG
+  : > "$ASIMOV_TEST_TMUTIL_LOG"
+}
+
+# Print the logged mock tmutil calls for one subcommand.
+#
+# Usage: tmutil_calls isexcluded
+tmutil_calls() {
+  grep "^$1 " "$ASIMOV_TEST_TMUTIL_LOG" || true
+}
+
 # Write a config file for testing.
 #
 # Usage: write_config "config file contents"

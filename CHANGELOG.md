@@ -20,6 +20,14 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Sentinel matches nested under directories configured with `[fixed_dirs] extra` are now
   skipped, avoiding redundant per-directory Time Machine exclusions before the configured
   parent directory is excluded ([#132](https://github.com/AsimovMac/asimov/issues/132)).
+- A directory that is deleted and recreated (`rm -rf node_modules && npm install`,
+  `cargo clean`, a wiped `[fixed_dirs]` cache), or whose exclusion was removed by hand,
+  is excluded again on the next run, or once Spotlight catches up. Previously
+  `~/.cache/asimov/excluded` kept listing it, so every later run skipped it until
+  `--no-read-cache`. Each run now re-checks that file with one batched `tmutil isexcluded`
+  call and ignores entries Time Machine reports as included. If the check fails, the file
+  is used unchecked as before, with a warning
+  ([#139](https://github.com/AsimovMac/asimov/issues/139)).
 
 ### Removed
 

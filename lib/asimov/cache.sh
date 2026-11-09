@@ -204,12 +204,45 @@ prune_path_cache() {
     echo "$dropped"
 }
 
+# Print the excluded-state paths that Time Machine hasn't stopped excluding.
+# A directory that was deleted and recreated, or whose exclusion was removed by
+# hand, is reported [Included] and left out, so it goes back through
+# exclude_paths_from_stdin (issue #139). [UNKNOWN] is kept: a scheduled run gets it
+# for everything inside privacy-protected folders such as ~/Documents.
+#
+# One batched `tmutil isexcluded` call covers every path: ~0.1s to start tmutil,
+# then well under 1ms per path, against ~0.1s per path for a call each. tmutil
+# prints symlinks resolved, so its lines are matched to paths by position. When
+# they don't line up (e.g. tmutil can't read exclusions at all), the state is
+# printed unchecked, as before. Not `-X`: its XML reports a missing path as not
+# excluded, losing [UNKNOWN].
+verified_excluded_state() {
+    local paths statuses
+    paths="$(grep -v '^$' "$ASIMOV_EXCLUDED_STATE" | sort -u || true)"
+    [[ -n "$paths" ]] || return 0
+    statuses="$(printf '%s\n' "$paths" | tr '\n' '\0' \
+        | xargs -0 tmutil isexcluded 2>/dev/null | grep '^\[' | cut -d ']' -f1 || true)"
+    if [[ -z "$statuses" \
+        || "$(printf '%s\n' "$statuses" | wc -l)" -ne "$(printf '%s\n' "$paths" | wc -l)" ]]; then
+        printf '! Could not check %s with tmutil isexcluded — trusting it as is.\n' \
+            "$ASIMOV_EXCLUDED_STATE" >&2
+        printf '  If this keeps happening, rebuild it with: asimov --no-read-cache\n' >&2
+        printf '%s\n' "$paths"
+        return 0
+    fi
+    paste -d '\t' <(printf '%s\n' "$statuses") <(printf '%s\n' "$paths") \
+        | awk -F '\t' '$1 != "[Included" { sub(/^[^\t]*\t/, ""); print }'
+}
+
 # Build the cache of paths already excluded from Time Machine, in
 # $ASIMOV_EXCLUDED_CACHE. Merges the Spotlight index (what macOS reports) with
 # Asimov's own persistent state (written after each successful tmutil call).
 # The persistent state covers:
 #   - Interrupted runs (Ctrl+C before all tmutil calls complete)
 #   - Spotlight indexing delays (tmutil set the xattr but Spotlight hasn't indexed it)
+#   - Directories Spotlight never reports, such as ~/.cache and other dot-dirs
+# It is re-checked against Time Machine on every run that reads it
+# (verified_excluded_state).
 build_excluded_cache() {
     verbose_timing "Building excluded-path cache via Spotlight…"
     : > "$ASIMOV_EXCLUDED_CACHE"
@@ -229,7 +262,7 @@ build_excluded_cache() {
     if [[ -z "$ASIMOV_NO_READ_CACHE" ]] && { cache_readable "$ASIMOV_EXCLUDED_STATE" || cache_readable "$ASIMOV_FAILED_STATE"; }; then
         {
             cat "$ASIMOV_EXCLUDED_CACHE"
-            if cache_readable "$ASIMOV_EXCLUDED_STATE"; then cat "$ASIMOV_EXCLUDED_STATE"; fi
+            if cache_readable "$ASIMOV_EXCLUDED_STATE"; then verified_excluded_state; fi
             if cache_readable "$ASIMOV_FAILED_STATE"; then cat "$ASIMOV_FAILED_STATE"; fi
         } | sort -u > "${ASIMOV_EXCLUDED_CACHE}.merged"
         mv -f "${ASIMOV_EXCLUDED_CACHE}.merged" "$ASIMOV_EXCLUDED_CACHE"

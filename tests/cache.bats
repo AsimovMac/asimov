@@ -410,6 +410,152 @@ load test_helper
 }
 
 # =============================================================================
+# Excluded state (issue #139)
+#
+# ~/.cache/asimov/excluded lets a run skip paths it excluded before, even when
+# Spotlight doesn't report them. Each run re-checks it with one batched
+# `tmutil isexcluded` call, so a directory that lost its exclusion is excluded
+# again.
+# =============================================================================
+
+@test "recreated dependency directory is excluded again" {
+  create_project "Code/My-Project" "package.json" "node_modules"
+  run_asimov
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+
+  recreate_dir "${HOME}/Code/My-Project/node_modules"
+
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Using cached paths"* ]]
+  [[ "$output" == *"node_modules has been excluded"* ]]
+  assert_excluded "${HOME}/Code/My-Project/node_modules"
+}
+
+@test "recreated extra fixed directory is excluded again" {
+  mkdir -p "${HOME}/.custom-cache"
+  write_config "[fixed_dirs]
+extra = ~/.custom-cache"
+  run_asimov
+  assert_excluded "${HOME}/.custom-cache"
+
+  recreate_dir "${HOME}/.custom-cache"
+
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *".custom-cache has been excluded"* ]]
+  assert_excluded "${HOME}/.custom-cache"
+}
+
+@test "exclusion removed without recreating the directory is applied again" {
+  mkdir -p "${HOME}/.custom-cache"
+  write_config "[fixed_dirs]
+extra = ~/.custom-cache"
+  run_asimov
+
+  # tmutil removeexclusion: the directory stays, its exclusion goes
+  : > "$ASIMOV_TEST_EXCLUSIONS"
+
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *".custom-cache has been excluded"* ]]
+  assert_excluded "${HOME}/.custom-cache"
+}
+
+@test "unchanged excluded state is checked in one isexcluded call, without re-excluding" {
+  mkdir -p "${HOME}/.cache-a" "${HOME}/.cache-b"
+  write_config "[fixed_dirs]
+extra = ~/.cache-a
+extra = ~/.cache-b"
+  run_asimov
+  [[ "$(count_exclusions)" -eq 2 ]]
+
+  log_tmutil_calls
+  run_asimov --verbose
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"2 paths already excluded, skipping."* ]]
+  [[ "$(tmutil_calls isexcluded | wc -l | tr -d ' ')" -eq 1 ]]
+  [[ "$(tmutil_calls isexcluded)" == *"${HOME}/.cache-a"*"${HOME}/.cache-b"* ]]
+  [[ -z "$(tmutil_calls addexclusion)" ]]
+}
+
+# A scheduled run can't read exclusions inside privacy-protected folders such as
+# ~/Documents: tmutil says [UNKNOWN] and addexclusion fails. What a terminal run
+# excluded there must not be retried by every scheduled run.
+@test "excluded-state entry tmutil reports as unknown is still skipped" {
+  create_project "Documents/My-Project" "package.json" "node_modules"
+  run_asimov
+  assert_excluded "${HOME}/Documents/My-Project/node_modules"
+
+  ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS="${TEST_TEMP_DIR}/.tmutil_unknown_paths"
+  export ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS
+  echo "${HOME}/Documents/My-Project/node_modules" > "$ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS"
+
+  log_tmutil_calls
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ -z "$(tmutil_calls addexclusion)" ]]
+}
+
+@test "excluded state is trusted, with a warning, when tmutil can't read exclusions" {
+  mkdir -p "${HOME}/.custom-cache"
+  write_config "[fixed_dirs]
+extra = ~/.custom-cache"
+  run_asimov
+
+  log_tmutil_calls
+  ASIMOV_TEST_TMUTIL_ISEXCLUDED_FAIL=1 run_asimov --quiet
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Could not check ${HOME}/.cache/asimov/excluded"*"trusting it as is"* ]]
+  [[ "$output" == *"asimov --no-read-cache"* ]]
+  [[ -z "$(tmutil_calls addexclusion)" ]]
+}
+
+@test "excluded state is trusted when tmutil stops partway through the batch" {
+  mkdir -p "${HOME}/.cache-a" "${HOME}/.cache-b"
+  write_config "[fixed_dirs]
+extra = ~/.cache-a
+extra = ~/.cache-b"
+  run_asimov
+  recreate_dir "${HOME}/.cache-b"
+
+  # Answers for .cache-a only, then crashes: .cache-b's status is unknown, so
+  # nothing may be read from the partial output.
+  log_tmutil_calls
+  ASIMOV_TEST_TMUTIL_ISEXCLUDED_LIMIT=1 run_asimov
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"trusting it as is"* ]]
+  [[ -z "$(tmutil_calls addexclusion)" ]]
+}
+
+@test "recreated directory with spaces in its path is excluded again" {
+  create_project "Code/My Project" "package.json" "node_modules"
+  run_asimov
+
+  log_tmutil_calls
+  run_asimov
+  [[ -z "$(tmutil_calls addexclusion)" ]]
+
+  recreate_dir "${HOME}/Code/My Project/node_modules"
+  run_asimov
+  [[ "$status" -eq 0 ]]
+  assert_excluded "${HOME}/Code/My Project/node_modules"
+}
+
+@test "--dry-run lists a recreated directory without excluding it" {
+  mkdir -p "${HOME}/.custom-cache"
+  write_config "[fixed_dirs]
+extra = ~/.custom-cache"
+  run_asimov
+  recreate_dir "${HOME}/.custom-cache"
+
+  run_asimov --dry-run
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Would exclude: ${HOME}/.custom-cache"* ]]
+  refute_excluded "${HOME}/.custom-cache"
+}
+
+# =============================================================================
 # Unusable cache files (issue #122)
 #
 # A cache is an optimisation. An unreadable or unwritable state file — the state

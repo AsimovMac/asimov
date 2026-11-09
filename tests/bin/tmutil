@@ -15,35 +15,61 @@ fi
 subcommand="${1:-}"
 shift || true
 
+# Log every call when ASIMOV_TEST_TMUTIL_LOG is set, one line per call with each
+# argument shell-quoted.
+if [[ -n "${ASIMOV_TEST_TMUTIL_LOG:-}" ]]; then
+  { printf '%s' "$subcommand"; printf ' %q' "$@"; printf '\n'; } >> "$ASIMOV_TEST_TMUTIL_LOG"
+fi
+
 case "$subcommand" in
   isexcluded)
-    path="${1:-}"
     # Simulate tmutil being unable to read exclusions at all — what a Mac
     # without Full Disk Access looks like to `asimov doctor`.
     if [[ -n "${ASIMOV_TEST_TMUTIL_ISEXCLUDED_FAIL:-}" ]]; then
       echo "tmutil: unable to read exclusion setting" >&2
       exit 1
     fi
-    # A path is excluded if it — or any ancestor directory — is in the exclusion
-    # database. Real tmutil reports descendants of a path-based exclusion as
-    # excluded too (TM exclusions are recursive), so a manually excluded parent
-    # like ~/.nvm covers ~/.nvm/.../node_modules.
-    excluded=false
-    probe="$path"
-    while :; do
-      if grep -Fxq "$probe" "$ASIMOV_TEST_EXCLUSIONS" 2>/dev/null; then
-        excluded=true
-        break
+    # Like real tmutil: one "[Status]  path" line per path, in order, padded with
+    # spaces, with directories printed resolved. A missing path is [UNKNOWN], and
+    # so is one listed in ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS — what a scheduled run
+    # sees inside a privacy-protected folder such as ~/Documents.
+    # ASIMOV_TEST_TMUTIL_ISEXCLUDED_LIMIT=N stops after N paths with an error, as
+    # real tmutil does when it crashes on one (e.g. a name that isn't UTF-8).
+    printed=0
+    for path in "$@"; do
+      if [[ -n "${ASIMOV_TEST_TMUTIL_ISEXCLUDED_LIMIT:-}" && $printed -ge $ASIMOV_TEST_TMUTIL_ISEXCLUDED_LIMIT ]]; then
+        echo "*** Terminating app due to uncaught exception" >&2
+        exit 134
       fi
-      parent="$(dirname "$probe")"
-      [[ "$parent" == "$probe" ]] && break
-      probe="$parent"
+      printed=$((printed + 1))
+      if [[ ! -e "$path" ]] || { [[ -n "${ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS:-}" ]] \
+          && grep -Fxq "$path" "$ASIMOV_TEST_TMUTIL_UNKNOWN_PATHS" 2>/dev/null; }; then
+        printf '%-12s%s\n' '[UNKNOWN]' "$path"
+        continue
+      fi
+      # A path is excluded if it — or any ancestor directory — is in the exclusion
+      # database. Real tmutil reports descendants of a path-based exclusion as
+      # excluded too (TM exclusions are recursive), so a manually excluded parent
+      # like ~/.nvm covers ~/.nvm/.../node_modules.
+      excluded=false
+      probe="$path"
+      while :; do
+        if grep -Fxq "$probe" "$ASIMOV_TEST_EXCLUSIONS" 2>/dev/null; then
+          excluded=true
+          break
+        fi
+        parent="$(dirname "$probe")"
+        [[ "$parent" == "$probe" ]] && break
+        probe="$parent"
+      done
+      shown="$path"
+      [[ -d "$path" ]] && shown="$(cd "$path" && pwd -P)"
+      if [[ "$excluded" == true ]]; then
+        printf '%-12s%s\n' '[Excluded]' "$shown"
+      else
+        printf '%-12s%s\n' '[Included]' "$shown"
+      fi
     done
-    if [[ "$excluded" == true ]]; then
-      printf '[Excluded]\t%s\n' "$path"
-    else
-      printf '[Included]\t%s\n' "$path"
-    fi
     ;;
   addexclusion)
     # Supports multiple paths: tmutil addexclusion path1 path2 ...

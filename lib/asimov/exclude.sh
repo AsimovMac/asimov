@@ -34,7 +34,8 @@ record_excluded_path() {
 # - Spotlight (mdfind) can be stale: recently excluded paths may not appear in the index.
 #   Without a guard, this causes re-excluding already-done paths (~11s each, wasted).
 # - Three-layer defense against wasted tmutil calls:
-#   1. Bulk grep against Spotlight + persistent state (instant, catches ~90%)
+#   1. Bulk grep against Spotlight + persistent state (instant, catches ~90%;
+#      the state is re-checked with one batched tmutil isexcluded call per run)
 #   2. Filter descendants of fixed dirs (instant, catches ~5%)
 #   3. tmutil isexcluded per-path guard (fast, catches remaining stale entries)
 exclude_paths_from_stdin() {
