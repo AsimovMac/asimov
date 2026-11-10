@@ -105,11 +105,11 @@ This means Asimov never touches a folder that just happens to share a common nam
 
 ## What Asimov doesn't do
 
-Asimov sets **Time Machine exclusions** — nothing else. Three things it's often expected to do, and doesn't:
+Asimov's default behavior sets **Time Machine exclusions** — nothing else. Two things it's often expected to do, and doesn't, plus one it can help with when asked:
 
 | | |
 | --- | --- |
-| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism. Excluding `node_modules` from Time Machine does not stop it appearing in Spotlight results. Tracked in [#70](https://github.com/AsimovMac/asimov/issues/70) |
+| **Hide folders from Spotlight** | Spotlight indexing is a separate mechanism from Time Machine exclusion, and off by default. Pass `--spotlight` to have Asimov report the same discovered directories as Spotlight-exclusion candidates — it prints the `sudo` command to run yourself rather than touching Spotlight state itself. See [`--spotlight`](#usage) |
 | **Shrink existing backups** | An exclusion stops a directory being backed up *from now on*. Copies already on the backup disk stay until you delete them or Time Machine ages them out |
 | **Delete anything** | Asimov never removes a file from your Mac. It only sets an attribute on the directory |
 
@@ -131,7 +131,7 @@ If `mdfind` doesn't list your projects, the run isn't reaching them. The two usu
 ## Usage
 
 ```
-asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write-cache] [--help] [--version]
+asimov [--dry-run] [--verbose] [--quiet] [--stats] [--spotlight] [--no-read-cache] [--no-write-cache] [--help] [--version]
 ```
 
 
@@ -141,6 +141,7 @@ asimov [--dry-run] [--verbose] [--quiet] [--stats] [--no-read-cache] [--no-write
 | `--verbose`         | Show all directories including already-excluded ones             |
 | `--quiet`           | Suppress all output except errors                                |
 | `--stats`           | Show per-directory sizes and a total-space summary               |
+| `--spotlight`       | Also report directories to exclude from Spotlight — prints a `sudo plutil`/`killall mds` command to run yourself; independent of Time Machine exclusion |
 | `--no-read-cache`   | Ignore cached state; re-discover and re-verify everything, then rebuild the cache |
 | `--no-write-cache`  | Run normally but don't persist any cache updates                 |
 
