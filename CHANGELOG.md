@@ -25,15 +25,14 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   plus how to verify a run reached your projects
   ([#90](https://github.com/AsimovMac/asimov/issues/90),
   [#45](https://github.com/AsimovMac/asimov/issues/45)).
-- `--spotlight` reports the same discovered dependency directories as candidates to
-  exclude from Spotlight indexing, independently of Time Machine exclusion — a directory
-  can be excluded from either, both, or neither. Asimov cannot read or write macOS's
-  Spotlight Privacy list without root and never runs as root (including unattended via
-  the LaunchAgent, where nothing could enter a sudo password), so it never touches
-  Spotlight state itself: it prints one batched `sudo plutil` command covering every new
-  candidate from the run, plus the `sudo killall mds` needed to make Spotlight pick up
-  the change, the same "print, don't act" precedent `asimov prune` already set for
-  privileged state it doesn't own ([#70](https://github.com/AsimovMac/asimov/issues/70)).
+- `--spotlight` also excludes the same discovered dependency directories from Spotlight
+  indexing, independently of Time Machine exclusion — a directory can be excluded from
+  either, both, or neither. Excluding requires root, since macOS only allows root to read
+  or write the Spotlight Privacy list, so `sudo asimov --spotlight` applies the exclusions
+  directly (and restarts Spotlight's metadata server to pick them up); running without
+  `sudo` changes nothing and prints a warning explaining why root is required, and
+  `--dry-run --spotlight` previews candidates without needing root at all
+  ([#70](https://github.com/AsimovMac/asimov/issues/70)).
 
 ### Changed
 

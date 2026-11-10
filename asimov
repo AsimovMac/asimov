@@ -10,8 +10,7 @@ ASIMOV_SIZE_LOG="$(mktemp)"
 ASIMOV_EXCLUDED_CACHE="$(mktemp)"
 ASIMOV_PATH_CACHE_TMP=""
 # Accumulates new Spotlight-exclusion candidates across every call site in this
-# run, so the batched `plutil`/`killall mds` command is printed once at the end
-# instead of once per call site.
+# run, so they're applied (or reported) once at the end instead of once per call site.
 ASIMOV_SPOTLIGHT_CANDIDATES="$(mktemp)"
 trap 'rm -f "$ASIMOV_SIZE_LOG" "$ASIMOV_EXCLUDED_CACHE" "$ASIMOV_PATH_CACHE_TMP" "$ASIMOV_SPOTLIGHT_CANDIDATES"' EXIT
 
@@ -49,9 +48,11 @@ print_usage() {
     printf '  --verbose          Show all directories including already-excluded ones\n'
     printf '  --quiet            Suppress all output except errors\n'
     printf '  --stats            Show directory sizes and total space in the summary\n'
-    printf '  --spotlight        Also report directories to exclude from Spotlight (prints a\n'
-    printf '                     sudo command to run yourself — Asimov never touches Spotlight\n'
-    printf '                     state, and this is independent of Time Machine exclusion)\n'
+    printf '  --spotlight        Also exclude discovered directories from Spotlight, independently\n'
+    printf '                     of Time Machine exclusion. Requires root (macOS only allows root\n'
+    printf '                     to touch the Spotlight Privacy list) — run with sudo to apply;\n'
+    printf '                     without sudo, prints what would be excluded and why it needs root.\n'
+    printf '                     Works without root under --dry-run.\n'
     printf '  --no-read-cache    Ignore cached state; re-discover and re-verify everything (rebuilds the cache)\n'
     printf '  --no-write-cache   Run normally but do not persist any cache updates\n'
     printf '  --full-scan        Alias for --no-read-cache\n'
@@ -88,6 +89,11 @@ if [[ "${1:-}" == "prune" ]]; then
     shift
 fi
 readonly ASIMOV_COMMAND
+
+# Preserved so a --spotlight run that can't write (not root) can tell the user
+# exactly what to re-run with sudo.
+ASIMOV_ORIGINAL_ARGS=("$@")
+readonly ASIMOV_ORIGINAL_ARGS
 
 for arg in "$@"; do
     case "$arg" in
@@ -157,7 +163,7 @@ verbose_timing() {
 resolve_asimov_root() {
     if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
         local console_user
-        console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo '')"
+        console_user="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || echo '')"
         if [[ -n "$console_user" && "$console_user" != "root" ]]; then
             local root_dir
             root_dir="$(dscl . -read "/Users/${console_user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
@@ -188,6 +194,11 @@ readonly ASIMOV_SPOTLIGHT_STATE="${ASIMOV_ROOT}/.cache/asimov/spotlight_pending"
 # Time Machine's system preferences, home of the "sticky" path exclusion list
 # (tmutil addexclusion -p). Overridable so tests can point at a fixture.
 readonly ASIMOV_TM_PLIST="${ASIMOV_TM_PLIST:-/Library/Preferences/com.apple.TimeMachine.plist}"
+
+# Spotlight's Privacy exclusion list. Reading or writing it requires root —
+# unprivileged access fails even to read it. Overridable so tests can point at
+# a fixture plist without touching the real one.
+readonly ASIMOV_SPOTLIGHT_PLIST="${ASIMOV_SPOTLIGHT_PLIST:-/System/Volumes/Data/.Spotlight-V100/VolumeConfiguration.plist}"
 
 # --- prune ---
 #
@@ -465,7 +476,7 @@ ensure_cache_dir() {
     mkdir -p "$cache_dir"
     if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
         local console_user
-        console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo '')"
+        console_user="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || echo '')"
         if [[ -n "$console_user" && "$console_user" != "root" ]]; then
             chown -R "$console_user" "$cache_dir" 2>/dev/null || true
         fi
@@ -558,7 +569,7 @@ finalize_path_cache() {
 
     if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
         local console_user
-        console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo '')"
+        console_user="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || echo '')"
         if [[ -n "$console_user" && "$console_user" != "root" ]]; then
             chown "$console_user" "$ASIMOV_PATH_CACHE" 2>/dev/null || true
         fi
@@ -1014,17 +1025,12 @@ exclude_paths_from_array() {
     fi
 }
 
-# Report the given paths as Spotlight-exclusion candidates (only when --spotlight
-# is set). Independent of Time Machine exclusion: filtered only against
-# ASIMOV_SPOTLIGHT_STATE, never against ASIMOV_EXCLUDED_STATE/CACHE, so a path
-# already Time-Machine-excluded (or not) is reported exactly the same way.
-#
-# Asimov cannot read or write macOS's Spotlight Privacy list without root (it's
-# a plist under /System/Volumes/Data/.Spotlight-V100, unreadable even with plutil
-# as a normal user), and Asimov never runs as root or prompts for a password
-# (it also runs unattended via the LaunchAgent, where sudo can't prompt at all).
-# So instead of executing anything, this prints one batched command the user can
-# run themselves — the same "print, don't act" precedent as `asimov prune`.
+# Collect the given paths as Spotlight-exclusion candidates (only when
+# --spotlight is set). Independent of Time Machine exclusion: filtered only
+# against ASIMOV_SPOTLIGHT_STATE, never against ASIMOV_EXCLUDED_STATE/CACHE, so
+# a path already Time-Machine-excluded (or not) is collected exactly the same
+# way. Just accumulates into ASIMOV_SPOTLIGHT_CANDIDATES — apply_spotlight_exclusions
+# decides, once at the end of the run, whether to apply, preview, or warn about them.
 report_spotlight_candidates() {
     local path
     local -a all_paths=("$@")
@@ -1046,33 +1052,124 @@ report_spotlight_candidates() {
 
     for path in "${candidates[@]}"; do
         printf '%s\n' "$path" >> "$ASIMOV_SPOTLIGHT_CANDIDATES"
-        # Persist immediately (unless dry-run) so re-running --spotlight doesn't
-        # re-report a path the user was already shown the command for.
-        if [[ -z "$ASIMOV_DRY_RUN" ]]; then
-            ensure_cache_dir
-            printf '%s\n' "$path" >> "$ASIMOV_SPOTLIGHT_STATE"
-        fi
     done
 }
 
-# Print the batched plutil/killall command for every candidate accumulated
-# this run (across all call sites), once, at the end of a --spotlight run.
-print_spotlight_command() {
-    [[ -z "$ASIMOV_SPOTLIGHT" || -n "$ASIMOV_QUIET" ]] && return 0
+# Add each path listed in $1 (one per line) to the Spotlight Privacy list at
+# plist $2, recording every path successfully added in state file $3. Prints
+# "EXCLUDED <n>" and "FAILED <n>" summary lines to stdout for the caller to
+# parse; per-path failures are reported on stderr as they happen.
+#
+# Does not check or require root itself — callers gate on EUID before calling
+# this. That split is what makes this testable without actually running as
+# root: only the real Spotlight plist under /System/Volumes/Data is
+# root-protected. plutil itself has no such restriction, so tests can point
+# this at an arbitrary fixture plist and exercise the real insert logic.
+write_spotlight_exclusions() {
+    local candidates_file="$1" plist="$2" state_file="$3"
+
+    # The Exclusions key may not exist yet (e.g. nothing has ever been added
+    # to Spotlight's Privacy list before) — plutil -insert Exclusions.0 fails
+    # outright unless the array already exists, so create it first. Ignore
+    # failure: it already existing is the common case.
+    plutil -insert Exclusions -array "$plist" >/dev/null 2>&1 || true
+
+    # plutil has no way to batch multiple -insert clauses in one invocation —
+    # each path needs its own call. These are local file edits (no daemon IPC
+    # like tmutil), so looping is fast: ~3ms per call.
+    local path excluded=0 failed=0
+    while IFS= read -r path; do
+        if plutil -insert Exclusions.0 -string "$path" "$plist" >/dev/null 2>&1; then
+            printf '%s\n' "$path" >> "$state_file"
+            excluded=$((excluded + 1))
+        else
+            echo "! ${path}: failed to add to Spotlight Privacy list (plutil error), skipping." >&2
+            failed=$((failed + 1))
+        fi
+    done < "$candidates_file"
+
+    echo "EXCLUDED ${excluded}"
+    echo "FAILED ${failed}"
+}
+
+# Apply (or preview, or explain) the Spotlight exclusions accumulated this run
+# (across all call sites), once, at the end of a --spotlight run.
+#
+# macOS only allows root to read or write the Spotlight Privacy list, and
+# Asimov never runs as root itself (including unattended via the LaunchAgent,
+# where nothing could answer a sudo password prompt). So:
+#   - Under --dry-run, this only previews candidates — no root needed, since
+#     the preview is based on Asimov's own ASIMOV_SPOTLIGHT_STATE bookkeeping,
+#     not a live read of the plist (which would need root anyway).
+#   - Run unprivileged (the common case), it explains why nothing was excluded
+#     and how to re-run with sudo.
+#   - Run as root (i.e. the user re-invoked with sudo), it performs the
+#     plutil insert(s) and restarts Spotlight's metadata server directly.
+apply_spotlight_exclusions() {
+    [[ -z "$ASIMOV_SPOTLIGHT" ]] && return 0
     local count
     count=$(wc -l < "$ASIMOV_SPOTLIGHT_CANDIDATES" | tr -d ' ')
     [[ "$count" -eq 0 ]] && return 0
 
-    local path insert_args=""
-    while IFS= read -r path; do
-        insert_args="${insert_args} -insert Exclusions.0 -string '${path}'"
-    done < "$ASIMOV_SPOTLIGHT_CANDIDATES"
+    if [[ -n "$ASIMOV_DRY_RUN" ]]; then
+        [[ -n "$ASIMOV_QUIET" ]] && return 0
+        printf '\n%s%s director%s would be excluded from Spotlight (independent of Time Machine):%s\n' \
+            "$ASIMOV_COLOR_INFO" "$count" "$([[ "$count" -eq 1 ]] && echo y || echo ies)" "$ASIMOV_COLOR_RESET"
+        local path
+        while IFS= read -r path; do
+            printf '  %s\n' "$path"
+        done < "$ASIMOV_SPOTLIGHT_CANDIDATES"
+        return 0
+    fi
 
-    printf '\n%s%s directories to also exclude from Spotlight (independent of Time Machine):%s\n' \
-        "$ASIMOV_COLOR_INFO" "$count" "$ASIMOV_COLOR_RESET"
-    printf 'sudo plutil%s \\\n    /System/Volumes/Data/.Spotlight-V100/VolumeConfiguration.plist\n' \
-        "$insert_args"
-    printf 'sudo killall mds   # restart Spotlight so it picks up the change\n'
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        [[ -n "$ASIMOV_QUIET" ]] && return 0
+        printf '\n%s%s director%s could be excluded from Spotlight, but nothing was changed%s\n' \
+            "$ASIMOV_COLOR_INFO" "$count" "$([[ "$count" -eq 1 ]] && echo y || echo ies)" "$ASIMOV_COLOR_RESET"
+        printf 'macOS only allows root to read or write its Spotlight Privacy list\n'
+        printf '(%s), so Asimov cannot make this change while\n' "$ASIMOV_SPOTLIGHT_PLIST"
+        printf 'running unprivileged. Re-run with sudo to exclude them:\n\n'
+        printf '  sudo %s' "$0"
+        local arg
+        for arg in "${ASIMOV_ORIGINAL_ARGS[@]+"${ASIMOV_ORIGINAL_ARGS[@]}"}"; do
+            printf ' %q' "$arg"
+        done
+        printf '\n'
+        return 0
+    fi
+
+    # Running as root: apply the writes directly.
+    ensure_cache_dir
+    local result excluded failed
+    result="$(write_spotlight_exclusions "$ASIMOV_SPOTLIGHT_CANDIDATES" "$ASIMOV_SPOTLIGHT_PLIST" "$ASIMOV_SPOTLIGHT_STATE")"
+    excluded="$(printf '%s\n' "$result" | awk '/^EXCLUDED/{print $2}')"
+    failed="$(printf '%s\n' "$result" | awk '/^FAILED/{print $2}')"
+
+    # ensure_cache_dir chowns the cache dir to the console user up front, but
+    # ASIMOV_SPOTLIGHT_STATE is typically created fresh by this very write —
+    # after the chown ran — so it needs its own chown, or it's left
+    # root-owned and unreadable by the console user on their next
+    # unprivileged --spotlight run.
+    local console_user
+    console_user="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || echo '')"
+    if [[ -n "$console_user" && "$console_user" != "root" ]]; then
+        chown "$console_user" "$ASIMOV_SPOTLIGHT_STATE" 2>/dev/null || true
+    fi
+
+    if [[ "$excluded" -eq 0 ]]; then
+        echo "asimov: failed to update the Spotlight Privacy list — nothing was excluded." >&2
+        return 1
+    fi
+    # Restart Spotlight's metadata server so it picks up the plist change.
+    killall mds >/dev/null 2>&1 || true
+
+    [[ -n "$ASIMOV_QUIET" ]] && return 0
+    printf '\n%s%s director%s excluded from Spotlight (independent of Time Machine).%s\n' \
+        "$ASIMOV_COLOR_INFO" "$excluded" "$([[ "$excluded" -eq 1 ]] && echo y || echo ies)" "$ASIMOV_COLOR_RESET"
+    if [[ "$failed" -gt 0 ]]; then
+        printf '%s%s director%s failed and were skipped — see errors above.%s\n' \
+            "$ASIMOV_COLOR_INFO" "$failed" "$([[ "$failed" -eq 1 ]] && echo y || echo ies)" "$ASIMOV_COLOR_RESET"
+    fi
 }
 
 # Build find parameters to skip ASIMOV_SKIP_PATHS (hardcoded directories like .Trash, Library).
@@ -1313,5 +1410,5 @@ fi
 
 verbose_timing "All exclusions processed"
 [[ -z "$ASIMOV_QUIET" ]] && print_exclusion_summary
-print_spotlight_command
+apply_spotlight_exclusions
 exit 0
