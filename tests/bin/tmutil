@@ -17,7 +17,9 @@ shift || true
 
 case "$subcommand" in
   isexcluded)
-    path="${1:-}"
+    if [[ -n "${ASIMOV_TEST_CHECK_CALLS:-}" ]]; then
+      printf "%s\n" "$#" >> "$ASIMOV_TEST_CHECK_CALLS"
+    fi
     # Simulate tmutil being unable to read exclusions at all — what a Mac
     # without Full Disk Access looks like to `asimov doctor`.
     if [[ -n "${ASIMOV_TEST_TMUTIL_ISEXCLUDED_FAIL:-}" ]]; then
@@ -28,22 +30,24 @@ case "$subcommand" in
     # database. Real tmutil reports descendants of a path-based exclusion as
     # excluded too (TM exclusions are recursive), so a manually excluded parent
     # like ~/.nvm covers ~/.nvm/.../node_modules.
-    excluded=false
-    probe="$path"
-    while :; do
-      if grep -Fxq "$probe" "$ASIMOV_TEST_EXCLUSIONS" 2>/dev/null; then
-        excluded=true
-        break
+    for path in "$@"; do
+      excluded=false
+      probe="$path"
+      while :; do
+        if grep -Fxq "$probe" "$ASIMOV_TEST_EXCLUSIONS" 2>/dev/null; then
+          excluded=true
+          break
+        fi
+        parent="$(dirname "$probe")"
+        [[ "$parent" == "$probe" ]] && break
+        probe="$parent"
+      done
+      if [[ "$excluded" == true ]]; then
+        printf '[Excluded]\t%s\n' "$path"
+      else
+        printf '[Included]\t%s\n' "$path"
       fi
-      parent="$(dirname "$probe")"
-      [[ "$parent" == "$probe" ]] && break
-      probe="$parent"
     done
-    if [[ "$excluded" == true ]]; then
-      printf '[Excluded]\t%s\n' "$path"
-    else
-      printf '[Included]\t%s\n' "$path"
-    fi
     ;;
   addexclusion)
     # Supports multiple paths: tmutil addexclusion path1 path2 ...

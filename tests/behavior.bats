@@ -1035,3 +1035,16 @@ dirs = ${external}"
   [[ "$status" -eq 0 ]]
   [[ "$output" == *"Would exclude: ${HOME}/prune/app/node_modules"* ]]
 }
+
+@test "checks uncached candidates together and preserves mixed exclusion status" {
+  create_project "Code/already excluded" "package.json" "node_modules"
+  create_project "Code/new project" "package.json" "node_modules"
+  echo "${HOME}/Code/already excluded/node_modules" > "$ASIMOV_TEST_EXCLUSIONS"
+  export ASIMOV_TEST_CHECK_CALLS="${TEST_TEMP_DIR}/check-calls"
+  run_asimov --no-cache --dry-run
+  [[ "$status" -eq 0 ]] || return 1
+  [[ "$output" == *"Would exclude: ${HOME}/Code/new project/node_modules"* ]] || return 1
+  [[ "$output" != *"Would exclude: ${HOME}/Code/already excluded/node_modules"* ]] || return 1
+  [[ "$(cat "$ASIMOV_TEST_CHECK_CALLS")" == 2 ]] || return 1
+  [[ "$(count_exclusions)" -eq 1 ]]
+}

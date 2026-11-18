@@ -36,7 +36,7 @@ record_excluded_path() {
 # - Three-layer defense against wasted tmutil calls:
 #   1. Bulk grep against Spotlight + persistent state (instant, catches ~90%)
 #   2. Filter descendants of fixed dirs (instant, catches ~5%)
-#   3. tmutil isexcluded per-path guard (fast, catches remaining stale entries)
+#   3. batched tmutil isexcluded guard (catches remaining stale entries)
 exclude_paths_from_stdin() {
     local path
     local -a all_paths=()
@@ -121,11 +121,15 @@ exclude_paths_from_stdin() {
     # of calling addexclusion and never persists state.
     verbose_timing "Excluding ${#to_exclude[@]} paths via tmutil…"
     [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]] && ensure_cache_dir
+    # Batch read-only checks; process startup dominates a warm scan. Keep writes per path.
+    local ground_truth
+    ground_truth="$(mktemp)"
+    printf '%s\0' "${to_exclude[@]}" | xargs -0 -n 100 tmutil isexcluded > "$ground_truth" 2>/dev/null || true
     local tmutil_i=0 skipped_already=0
     for path in "${to_exclude[@]}"; do
         tmutil_i=$((tmutil_i + 1))
         # Ground-truth check: is this path actually already excluded?
-        if tmutil isexcluded "$path" 2>/dev/null | grep -Fq '[Excluded]'; then
+        if grep -Fxq -e "[Excluded]  $path" -e $'[Excluded]\t'"$path" "$ground_truth"; then
             skipped_already=$((skipped_already + 1))
             # Persist so we skip it via the fast cache next time (not in dry-run / no-write)
             [[ -z "$ASIMOV_DRY_RUN" && -z "$ASIMOV_NO_WRITE_CACHE" ]] && append_state "$path" "$ASIMOV_EXCLUDED_STATE"
@@ -161,6 +165,7 @@ exclude_paths_from_stdin() {
         record_excluded_path "$path" "${path} has been excluded from Time Machine backups"
         verbose_timing "  [${tmutil_i}/${#to_exclude[@]}] excluded in $((SECONDS - path_start))s: ${path}"
     done
+    rm -f "$ground_truth"
     if [[ $skipped_already -gt 0 ]]; then
         verbose_timing "Skipped ${skipped_already} already-excluded paths (Spotlight cache was stale)"
     fi
